@@ -19,6 +19,12 @@ import { nativeFileSystemSupported } from "../data/filesystem";
 import { resaveAsImageWithScene } from "../data/resave";
 
 import { t } from "../i18n";
+import {
+  createExportPreset,
+  deleteExportPreset,
+  getAppliedExportPreset,
+  renameExportPreset,
+} from "../exportPreferences";
 
 import "../components/ToolIcon.scss";
 
@@ -459,4 +465,109 @@ export const actionExportWithDarkMode = register<
       />
     </div>
   ),
+});
+
+const getExportPresetErrorMessage = (error: "empty" | "duplicate") =>
+  error === "empty"
+    ? t("imageExportDialog.preset.error.emptyName")
+    : t("imageExportDialog.preset.error.duplicateName");
+
+export const actionCreateExportPreset = register<{ name: string }>({
+  name: "createExportPreset",
+  label: "imageExportDialog.preset.save",
+  trackEvent: { category: "export", action: "createPreset" },
+  perform: (_elements, appState, value) => {
+    if (!value) {
+      return { captureUpdate: CaptureUpdateAction.EVENTUALLY };
+    }
+    const result = createExportPreset(
+      appState.exportPresets,
+      value.name,
+      appState,
+    );
+
+    return {
+      appState:
+        typeof result === "string"
+          ? { ...appState, errorMessage: getExportPresetErrorMessage(result) }
+          : { ...appState, exportPresets: result },
+      captureUpdate: CaptureUpdateAction.EVENTUALLY,
+    };
+  },
+});
+
+export const actionRenameExportPreset = register<{
+  id: string;
+  name: string;
+}>({
+  name: "renameExportPreset",
+  label: "imageExportDialog.preset.rename",
+  trackEvent: { category: "export", action: "renamePreset" },
+  perform: (_elements, appState, value) => {
+    if (!value) {
+      return { captureUpdate: CaptureUpdateAction.EVENTUALLY };
+    }
+    const result = renameExportPreset(
+      appState.exportPresets,
+      value.id,
+      value.name,
+    );
+
+    return {
+      appState:
+        typeof result === "string"
+          ? { ...appState, errorMessage: getExportPresetErrorMessage(result) }
+          : { ...appState, exportPresets: result },
+      captureUpdate: CaptureUpdateAction.EVENTUALLY,
+    };
+  },
+});
+
+export const actionDeleteExportPreset = register<{ id: string }>({
+  name: "deleteExportPreset",
+  label: "imageExportDialog.preset.delete",
+  trackEvent: { category: "export", action: "deletePreset" },
+  perform: (_elements, appState, value) =>
+    value
+      ? {
+          appState: {
+            ...appState,
+            exportPresets: deleteExportPreset(appState.exportPresets, value.id),
+          },
+          captureUpdate: CaptureUpdateAction.EVENTUALLY,
+        }
+      : { captureUpdate: CaptureUpdateAction.EVENTUALLY },
+});
+
+export const actionApplyExportPreset = register<{ id: string }>({
+  name: "applyExportPreset",
+  label: "imageExportDialog.preset.apply",
+  trackEvent: { category: "export", action: "applyPreset" },
+  perform: (_elements, appState, value, app) => {
+    if (!value) {
+      return { captureUpdate: CaptureUpdateAction.EVENTUALLY };
+    }
+    const preferences = getAppliedExportPreset(
+      appState.exportPresets,
+      value.id,
+    );
+    if (!preferences) {
+      return {
+        appState: {
+          ...appState,
+          errorMessage: t("imageExportDialog.preset.error.notFound"),
+        },
+        captureUpdate: CaptureUpdateAction.EVENTUALLY,
+      };
+    }
+
+    app.sessionExportThemeOverride = preferences.exportWithDarkMode
+      ? THEME.DARK
+      : THEME.LIGHT;
+
+    return {
+      appState: { ...appState, ...preferences },
+      captureUpdate: CaptureUpdateAction.EVENTUALLY,
+    };
+  },
 });

@@ -58,6 +58,7 @@ import type { ClipboardData } from "./clipboard";
 import type App from "./components/App";
 import type Library from "./data/library";
 import type { ContextMenuItems } from "./components/ContextMenu";
+import type { ExportPreset } from "./exportPreferences";
 import type { SnapLine } from "./snapping";
 import type { ImportedDataState } from "./data/types";
 import type { SetViewportOptions } from "./viewport";
@@ -431,6 +432,7 @@ export interface AppState {
   exportEmbedScene: boolean;
   exportWithDarkMode: boolean;
   exportScale: number;
+  exportPresets: ExportPreset[];
   currentItemStrokeColor: string;
   currentItemStickynoteStrokeColor: string;
   currentItemStickynoteBackgroundColor: string;
