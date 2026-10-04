@@ -8,8 +8,12 @@ import {
   isFrameLikeElement,
   isTextElement,
   measureText,
+  getSelectedElements,
 } from "@excalidraw/element";
-import { getDefaultFrameName } from "@excalidraw/element/frame";
+import {
+  getDefaultFrameName,
+  getFrameChildren,
+} from "@excalidraw/element/frame";
 
 import type {
   ExcalidrawElement,
@@ -17,11 +21,55 @@ import type {
   ExcalidrawTextElement,
 } from "@excalidraw/element/types";
 
-import type { SearchMatch } from "./types";
+import type { AppState, SearchMatch } from "./types";
+
+export type SearchScope =
+  | { type: "all" }
+  | { type: "selection" }
+  | { type: "frame"; frameId: string | null };
+
+export type SearchOptions = {
+  scope?: SearchScope;
+  selectedElementIds?: AppState["selectedElementIds"];
+  matchCase?: boolean;
+};
+
+/** Resolve scope before matching, including dependent labels exactly once. */
+const getSearchCandidates = (
+  elements: readonly ExcalidrawElement[],
+  { scope = { type: "all" }, selectedElementIds = {} }: SearchOptions,
+) => {
+  const nonDeletedElements = elements.filter((element) => !element.isDeleted);
+  if (scope.type === "all") {
+    return nonDeletedElements;
+  }
+
+  let candidateIds = selectedElementIds;
+  if (scope.type === "frame") {
+    const frame = nonDeletedElements.find(
+      (element) => element.id === scope.frameId && isFrameLikeElement(element),
+    );
+    if (!frame) {
+      return [];
+    }
+    candidateIds = Object.fromEntries(
+      [frame, ...getFrameChildren(nonDeletedElements, frame.id)].map(
+        (element) => [element.id, true],
+      ),
+    );
+  }
+
+  return getSelectedElements(
+    nonDeletedElements,
+    { selectedElementIds: candidateIds },
+    { includeBoundTextElement: true, includeElementsInFrames: false },
+  );
+};
 
 export type SearchMatchItem = {
   element: ExcalidrawTextElement | ExcalidrawFrameLikeElement;
   searchQuery: SearchQuery;
+  matchedText: string;
   index: number;
   preview: {
     indexInSearchQuery: number;
@@ -82,7 +130,10 @@ const getMatchPreview = (
 
   return {
     indexInSearchQuery: wordsBeforeAsString.length,
-    previewText: wordsBeforeAsString + searchQuery + wordsAfterAsString,
+    previewText:
+      wordsBeforeAsString +
+      text.slice(index, index + searchQuery.length) +
+      wordsAfterAsString,
     moreBefore: startWordIndex > 0,
     moreAfter: wordsAfter.length > numberOfWordsToTake,
   };
@@ -279,15 +330,17 @@ export const searchDrawing = (
   elements: readonly ExcalidrawElement[],
   searchQuery: SearchQuery,
   zoomValue: number,
+  options: SearchOptions = {},
 ): SearchMatchItem[] => {
   if (!searchQuery) {
     return [];
   }
-  const texts = elements.filter((el) =>
+  const candidates = getSearchCandidates(elements, options);
+  const texts = candidates.filter((el) =>
     isTextElement(el),
   ) as ExcalidrawTextElement[];
 
-  const frames = elements.filter((el) =>
+  const frames = candidates.filter((el) =>
     isFrameLikeElement(el),
   ) as ExcalidrawFrameLikeElement[];
 
@@ -296,7 +349,10 @@ export const searchDrawing = (
 
   const textMatches: SearchMatchItem[] = [];
 
-  const regex = new RegExp(escapeSpecialCharacters(searchQuery), "gi");
+  const regex = new RegExp(
+    escapeSpecialCharacters(searchQuery),
+    options.matchCase ? "g" : "gi",
+  );
 
   for (const textEl of texts) {
     let match = null;
@@ -310,6 +366,7 @@ export const searchDrawing = (
         textMatches.push({
           element: textEl,
           searchQuery,
+          matchedText: match[0],
           preview,
           index: match.index,
           matchedLines,
@@ -337,6 +394,7 @@ export const searchDrawing = (
         frameMatches.push({
           element: frame,
           searchQuery,
+          matchedText: match[0],
           preview,
           index: match.index,
           matchedLines,
