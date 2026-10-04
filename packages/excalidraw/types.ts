@@ -58,6 +58,7 @@ import type { ClipboardData } from "./clipboard";
 import type App from "./components/App";
 import type Library from "./data/library";
 import type { ContextMenuItems } from "./components/ContextMenu";
+import type { ExportPreset } from "./exportPreferences";
 import type { SnapLine } from "./snapping";
 import type { ImportedDataState } from "./data/types";
 import type { SetViewportOptions } from "./viewport";
@@ -254,6 +255,7 @@ export type InteractiveCanvasAppState = Readonly<
     shouldCacheIgnoreZoom: AppState["shouldCacheIgnoreZoom"];
     exportScale: AppState["exportScale"];
     currentItemArrowType: AppState["currentItemArrowType"];
+    alignReferenceElementId: AppState["alignReferenceElementId"];
   }
 >;
 
@@ -430,6 +432,7 @@ export interface AppState {
   exportEmbedScene: boolean;
   exportWithDarkMode: boolean;
   exportScale: number;
+  exportPresets: ExportPreset[];
   currentItemStrokeColor: string;
   currentItemStickynoteStrokeColor: string;
   currentItemStickynoteBackgroundColor: string;
@@ -567,6 +570,10 @@ export interface AppState {
     stickyNoteStroke: readonly string[] | null;
     stickyNoteBackground: readonly string[] | null;
   };
+  /** element the align actions align to instead of the selection box. A UI
+   * pointer, not scene data: only honored while it is selected (see
+   * `getAlignReferenceElement`) and cleared once it leaves the selection. */
+  alignReferenceElementId: ExcalidrawElement["id"] | null;
 }
 
 export type SearchMatch = {

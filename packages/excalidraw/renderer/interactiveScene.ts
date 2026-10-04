@@ -52,6 +52,11 @@ import {
 
 import { renderSelectionElement } from "@excalidraw/element";
 
+import {
+  getAlignReferenceBounds,
+  getAlignmentUnits,
+} from "@excalidraw/element";
+
 import { getCommonBounds, getElementAbsoluteCoords } from "@excalidraw/element";
 import {
   getGlobalFixedPointForBindableElement,
@@ -1145,6 +1150,44 @@ const renderElementsBoxHighlight = (
     );
 };
 
+/**
+ * Marks the align reference: the exact box the align actions would align the
+ * rest of the selection to. Drawn only while the reference is in effect.
+ */
+const renderAlignReferenceMarker = (
+  context: CanvasRenderingContext2D,
+  appState: InteractiveCanvasAppState,
+  selectedElements: readonly NonDeletedExcalidrawElement[],
+  elementsMap: ElementsMap,
+) => {
+  const units = getAlignmentUnits(selectedElements, elementsMap, appState);
+  const { box, fixedUnit } = getAlignReferenceBounds(
+    selectedElements,
+    appState,
+    elementsMap,
+  )(selectedElements, units);
+  if (!fixedUnit) {
+    return;
+  }
+
+  const padding =
+    (DEFAULT_TRANSFORM_HANDLE_SPACING * 2 + 4) / appState.zoom.value;
+  const dash = 6 / appState.zoom.value;
+
+  context.save();
+  context.translate(appState.scrollX, appState.scrollY);
+  context.strokeStyle = getThemedColor("#f08c00", appState.theme);
+  context.lineWidth = 2 / appState.zoom.value;
+  context.setLineDash([dash, dash * 0.75]);
+  context.strokeRect(
+    box.minX - padding,
+    box.minY - padding,
+    box.maxX - box.minX + padding * 2,
+    box.maxY - box.minY + padding * 2,
+  );
+  context.restore();
+};
+
 const renderLinearPointHandles = (
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
@@ -1782,6 +1825,15 @@ const _renderInteractiveScene = ({
         colors: [getThemedColor("#ced4da", appState.theme)],
         dashed: true,
       },
+    );
+  }
+
+  if (appState.alignReferenceElementId) {
+    renderAlignReferenceMarker(
+      context,
+      appState,
+      selectedElements,
+      allElementsMap,
     );
   }
 

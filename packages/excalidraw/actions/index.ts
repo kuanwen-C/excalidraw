@@ -39,6 +39,10 @@ export { actionDeselect } from "./actionDeselect";
 export {
   actionChangeProjectName,
   actionChangeExportBackground,
+  actionCreateExportPreset,
+  actionRenameExportPreset,
+  actionDeleteExportPreset,
+  actionApplyExportPreset,
   actionSaveToActiveFile,
   actionSaveFileToDisk,
   actionLoadScene,
@@ -92,3 +96,8 @@ export { actionToggleLinearEditor } from "./actionLinearEditor";
 export { actionToggleSearchMenu } from "./actionToggleSearchMenu";
 
 export { actionToggleCropEditor } from "./actionCropEditor";
+
+export {
+  actionSetAlignReference,
+  actionClearAlignReference,
+} from "./actionAlignReference";

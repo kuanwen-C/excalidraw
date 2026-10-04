@@ -1,5 +1,5 @@
 import { exportToCanvas } from "@excalidraw/utils/export";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   DEFAULT_EXPORT_PADDING,
@@ -17,6 +17,10 @@ import {
   actionChangeExportEmbedScene,
   actionChangeExportScale,
   actionChangeProjectName,
+  actionCreateExportPreset,
+  actionRenameExportPreset,
+  actionDeleteExportPreset,
+  actionApplyExportPreset,
 } from "../actions/actionExport";
 import { probablySupportsClipboardBlob } from "../clipboard";
 import { prepareElementsForExport } from "../data";
@@ -26,6 +30,10 @@ import { useCopyStatus } from "../hooks/useCopiedIndicator";
 
 import { t } from "../i18n";
 import { isSomeElementSelected } from "../scene";
+import {
+  getExportPreferences,
+  getExportPresetNameError,
+} from "../exportPreferences";
 
 import { copyIcon, downloadIcon, helpIcon } from "./icons";
 import { Dialog } from "./Dialog";
@@ -33,6 +41,7 @@ import { RadioGroup } from "./RadioGroup";
 import { Switch } from "./Switch";
 import { Tooltip } from "./Tooltip";
 import { FilledButton } from "./FilledButton";
+import { TextField } from "./TextField";
 
 import "./ImageExportDialog.scss";
 
@@ -54,22 +63,22 @@ export const ErrorCanvasPreview = () => {
 
 type ImageExportModalProps = {
   appStateSnapshot: Readonly<UIAppState>;
+  appState: Readonly<UIAppState>;
   elementsSnapshot: readonly NonDeletedExcalidrawElement[];
   files: BinaryFiles;
   actionManager: ActionManager;
   onExportImage: AppClassProperties["onExportImage"];
   name: string;
-  exportWithDarkMode: boolean;
 };
 
 const ImageExportModal = ({
   appStateSnapshot,
+  appState,
   elementsSnapshot,
   files,
   actionManager,
   onExportImage,
   name,
-  exportWithDarkMode,
 }: ImageExportModalProps) => {
   const hasSelection = isSomeElementSelected(
     elementsSnapshot,
@@ -78,13 +87,28 @@ const ImageExportModal = ({
 
   const [projectName, setProjectName] = useState(name);
   const [exportSelectionOnly, setExportSelectionOnly] = useState(hasSelection);
-  const [exportWithBackground, setExportWithBackground] = useState(
-    appStateSnapshot.exportBackground,
+  const [selectedPresetId, setSelectedPresetId] = useState("");
+  const [presetName, setPresetName] = useState("");
+  const [presetError, setPresetError] = useState<string | null>(null);
+  const {
+    exportBackground,
+    exportWithDarkMode,
+    exportScale,
+    exportEmbedScene,
+  } = appState;
+  const exportPreferences = useMemo(
+    () =>
+      getExportPreferences({
+        exportBackground,
+        exportWithDarkMode,
+        exportScale,
+        exportEmbedScene,
+      }),
+    [exportBackground, exportWithDarkMode, exportScale, exportEmbedScene],
   );
-  const [embedScene, setEmbedScene] = useState(
-    appStateSnapshot.exportEmbedScene,
+  const selectedPreset = appState.exportPresets.find(
+    (preset) => preset.id === selectedPresetId,
   );
-  const [exportScale, setExportScale] = useState(appStateSnapshot.exportScale);
 
   const previewRef = useRef<HTMLDivElement>(null);
   const previewRenderRequestIdRef = useRef(0);
@@ -98,10 +122,10 @@ const ImageExportModal = ({
     resetCopyStatus();
   }, [
     projectName,
-    exportWithBackground,
+    exportBackground,
     exportWithDarkMode,
     exportScale,
-    embedScene,
+    exportEmbedScene,
     resetCopyStatus,
   ]);
 
@@ -132,10 +156,7 @@ const ImageExportModal = ({
       appState: {
         ...appStateSnapshot,
         name: projectName,
-        exportBackground: exportWithBackground,
-        exportWithDarkMode,
-        exportScale,
-        exportEmbedScene: embedScene,
+        ...exportPreferences,
       },
       files,
       exportPadding: DEFAULT_EXPORT_PADDING,
@@ -183,10 +204,7 @@ const ImageExportModal = ({
     exportedElements,
     exportingFrame,
     projectName,
-    exportWithBackground,
-    exportWithDarkMode,
-    exportScale,
-    embedScene,
+    exportPreferences,
   ]);
 
   return (
@@ -217,6 +235,124 @@ const ImageExportModal = ({
       </div>
       <div className="ImageExportModal__settings">
         <h3>{t("imageExportDialog.header")}</h3>
+        <div className="ImageExportModal__preset">
+          <label htmlFor="exportPresetSelect">
+            {t("imageExportDialog.preset.label")}
+          </label>
+          <select
+            id="exportPresetSelect"
+            className="dropdown-select"
+            value={selectedPresetId}
+            onChange={(event) => {
+              const id = event.target.value;
+              const preset = appState.exportPresets.find(
+                (candidate) => candidate.id === id,
+              );
+              setSelectedPresetId(id);
+              setPresetName(preset?.name ?? "");
+              setPresetError(null);
+            }}
+          >
+            <option value="">{t("imageExportDialog.preset.none")}</option>
+            {appState.exportPresets.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name}
+              </option>
+            ))}
+          </select>
+          <TextField
+            value={presetName}
+            fullWidth
+            placeholder={t("imageExportDialog.preset.namePlaceholder")}
+            onChange={(value) => {
+              setPresetName(value);
+              setPresetError(null);
+            }}
+          />
+          {presetError && (
+            <div className="ImageExportModal__preset__error" role="alert">
+              {presetError}
+            </div>
+          )}
+          <div className="ImageExportModal__preset__buttons">
+            <FilledButton
+              variant="outlined"
+              label={t("imageExportDialog.preset.save")}
+              onClick={() => {
+                const error = getExportPresetNameError(
+                  appState.exportPresets,
+                  presetName,
+                );
+                if (error) {
+                  setPresetError(
+                    error === "empty"
+                      ? t("imageExportDialog.preset.error.emptyName")
+                      : t("imageExportDialog.preset.error.duplicateName"),
+                  );
+                  return;
+                }
+                actionManager.executeAction(actionCreateExportPreset, "ui", {
+                  name: presetName,
+                });
+                setPresetName("");
+              }}
+            />
+            <FilledButton
+              variant="outlined"
+              label={t("imageExportDialog.preset.apply")}
+              disabled={!selectedPreset}
+              onClick={() => {
+                if (selectedPreset) {
+                  actionManager.executeAction(actionApplyExportPreset, "ui", {
+                    id: selectedPreset.id,
+                  });
+                }
+              }}
+            />
+            <FilledButton
+              variant="outlined"
+              label={t("imageExportDialog.preset.rename")}
+              disabled={!selectedPreset}
+              onClick={() => {
+                if (!selectedPreset) {
+                  return;
+                }
+                const error = getExportPresetNameError(
+                  appState.exportPresets,
+                  presetName,
+                  selectedPreset.id,
+                );
+                if (error) {
+                  setPresetError(
+                    error === "empty"
+                      ? t("imageExportDialog.preset.error.emptyName")
+                      : t("imageExportDialog.preset.error.duplicateName"),
+                  );
+                  return;
+                }
+                actionManager.executeAction(actionRenameExportPreset, "ui", {
+                  id: selectedPreset.id,
+                  name: presetName,
+                });
+              }}
+            />
+            <FilledButton
+              variant="outlined"
+              color="danger"
+              label={t("imageExportDialog.preset.delete")}
+              disabled={!selectedPreset}
+              onClick={() => {
+                if (selectedPreset) {
+                  actionManager.executeAction(actionDeleteExportPreset, "ui", {
+                    id: selectedPreset.id,
+                  });
+                  setSelectedPresetId("");
+                  setPresetName("");
+                }
+              }}
+            />
+          </div>
+        </div>
         {hasSelection && (
           <ExportSetting
             label={t("imageExportDialog.label.onlySelected")}
@@ -237,9 +373,8 @@ const ImageExportModal = ({
         >
           <Switch
             name="exportBackgroundSwitch"
-            checked={exportWithBackground}
+            checked={exportBackground}
             onChange={(checked) => {
-              setExportWithBackground(checked);
               actionManager.executeAction(
                 actionChangeExportBackground,
                 "ui",
@@ -271,9 +406,8 @@ const ImageExportModal = ({
         >
           <Switch
             name="exportEmbedSwitch"
-            checked={embedScene}
+            checked={exportEmbedScene}
             onChange={(checked) => {
-              setEmbedScene(checked);
               actionManager.executeAction(
                 actionChangeExportEmbedScene,
                 "ui",
@@ -290,7 +424,6 @@ const ImageExportModal = ({
             name="exportScale"
             value={exportScale}
             onChange={(scale) => {
-              setExportScale(scale);
               actionManager.executeAction(actionChangeExportScale, "ui", scale);
             }}
             choices={EXPORT_SCALES.map((scale) => ({
@@ -415,11 +548,11 @@ export const ImageExportDialog = ({
       <ImageExportModal
         elementsSnapshot={elementsSnapshot}
         appStateSnapshot={appStateSnapshot}
+        appState={appState}
         files={files}
         actionManager={actionManager}
         onExportImage={onExportImage}
         name={name}
-        exportWithDarkMode={appState.exportWithDarkMode}
       />
     </Dialog>
   );

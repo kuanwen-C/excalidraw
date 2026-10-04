@@ -2,58 +2,194 @@ import type { AppState } from "@excalidraw/excalidraw/types";
 
 import { updateBoundElements } from "./binding";
 import { getCommonBoundingBox } from "./bounds";
-import { getSelectedElementsByGroup } from "./groups";
+import {
+  getSelectedElementsByGroup,
+  getSelectedGroupIds,
+  isSelectedViaGroup,
+} from "./groups";
+import { isFrameLikeElement } from "./typeChecks";
 
 import { getNonDeletedElements } from ".";
 
 import type { Scene } from "./Scene";
 
 import type { BoundingBox } from "./bounds";
-import type { ExcalidrawElement, NonDeletedExcalidrawElement } from "./types";
+import type {
+  ElementsMap,
+  ExcalidrawElement,
+  NonDeletedExcalidrawElement,
+} from "./types";
 
 export interface Alignment {
   position: "start" | "center" | "end";
   axis: "x" | "y";
 }
 
+/**
+ * The units alignment moves: each selected element, or each selected group
+ * as a whole, with bound text kept alongside its container.
+ */
+export const getAlignmentUnits = (
+  selectedElements: readonly NonDeletedExcalidrawElement[],
+  elementsMap: ElementsMap,
+  appState: Readonly<Pick<AppState, "selectedGroupIds" | "editingGroupId">>,
+): (readonly NonDeletedExcalidrawElement[])[] =>
+  getSelectedElementsByGroup(
+    selectedElements as NonDeletedExcalidrawElement[],
+    elementsMap,
+    appState,
+  ).map(getNonDeletedElements); // Nothing to align on deleted elements
+
+/**
+ * Strategy deciding the box every selected unit aligns to. Kept apart from
+ * `alignElements` so where the reference comes from never affects how units
+ * are bucketed, moved, or have their bindings updated.
+ *
+ * `fixedUnit` is the unit that defines the box, if any; it is never moved.
+ */
+export type ReferenceBounds = (
+  selectedElements: readonly NonDeletedExcalidrawElement[],
+  units: readonly (readonly NonDeletedExcalidrawElement[])[],
+) => {
+  box: BoundingBox;
+  fixedUnit: readonly NonDeletedExcalidrawElement[] | null;
+};
+
+/** Align to the bounding box of the whole selection (the default). */
+export const selectionBounds: ReferenceBounds = (selectedElements) => ({
+  box: getCommonBoundingBox(selectedElements),
+  fixedUnit: null,
+});
+
+/**
+ * Align to the unit (element or group, as bucketed for alignment) containing
+ * the reference element, which stays fixed. Falls back to the selection box
+ * if no selected unit contains it.
+ */
+export const referenceElementBounds =
+  (referenceElementId: ExcalidrawElement["id"]): ReferenceBounds =>
+  (selectedElements, units) => {
+    const referenceUnit = units.find((unit) =>
+      unit.some((element) => element.id === referenceElementId),
+    );
+    if (!referenceUnit) {
+      return selectionBounds(selectedElements, units);
+    }
+    return {
+      box: getCommonBoundingBox(referenceUnit),
+      fixedUnit: referenceUnit,
+    };
+  };
+
+/**
+ * Returns the alignment reference element if `appState.alignReferenceElementId`
+ * is usable: the element exists, isn't deleted, is still selected and isn't
+ * frame-like (frames are excluded from alignment). Otherwise null, which means
+ * "align to the selection box".
+ */
+export const getAlignReferenceElement = (
+  appState: Readonly<
+    Pick<AppState, "alignReferenceElementId" | "selectedElementIds">
+  >,
+  elementsMap: ElementsMap,
+): NonDeletedExcalidrawElement | null => {
+  const { alignReferenceElementId } = appState;
+  if (!alignReferenceElementId) {
+    return null;
+  }
+  const element = elementsMap.get(alignReferenceElementId);
+  if (
+    !element ||
+    element.isDeleted ||
+    !appState.selectedElementIds[element.id] ||
+    isFrameLikeElement(element)
+  ) {
+    return null;
+  }
+  return element as NonDeletedExcalidrawElement;
+};
+
+/**
+ * True when the selection is exactly one selected group. Alignment then
+ * buckets the group by its members instead of treating it as one unit.
+ */
+export const isSingleSelectedGroup = (
+  selectedElements: readonly NonDeletedExcalidrawElement[],
+  appState: Readonly<Pick<AppState, "selectedGroupIds" | "editingGroupId">>,
+) =>
+  getSelectedGroupIds(appState).length === 1 &&
+  selectedElements.every((element) => isSelectedViaGroup(appState, element));
+
+/**
+ * The strategy the align actions use for the current selection: the valid
+ * reference element's unit if there is one, else the selection box.
+ */
+export const getAlignReferenceBounds = (
+  selectedElements: readonly NonDeletedExcalidrawElement[],
+  appState: Readonly<
+    Pick<
+      AppState,
+      | "alignReferenceElementId"
+      | "selectedElementIds"
+      | "selectedGroupIds"
+      | "editingGroupId"
+    >
+  >,
+  elementsMap: ElementsMap,
+): ReferenceBounds => {
+  const referenceElement = getAlignReferenceElement(appState, elementsMap);
+  // a lone selected group is split into its members when aligned, so it
+  // can't be one fixed unit; its box is the selection box anyway
+  if (!referenceElement || isSingleSelectedGroup(selectedElements, appState)) {
+    return selectionBounds;
+  }
+  return referenceElementBounds(referenceElement.id);
+};
+
 export const alignElements = (
   selectedElements: NonDeletedExcalidrawElement[],
   alignment: Alignment,
   scene: Scene,
   appState: Readonly<AppState>,
+  referenceBounds: ReferenceBounds = selectionBounds,
 ): NonDeletedExcalidrawElement[] => {
-  const groups = getSelectedElementsByGroup(
+  const groups = getAlignmentUnits(
     selectedElements,
     scene.getNonDeletedElementsMap(),
     appState,
-  ).map(getNonDeletedElements); // Nothing to align on deleted elements
-  const selectionBoundingBox = getCommonBoundingBox(selectedElements);
+  );
+  const { box: referenceBoundingBox, fixedUnit } = referenceBounds(
+    selectedElements,
+    groups,
+  );
 
-  return groups.flatMap((group) => {
-    const translation = calculateTranslation(
-      group,
-      selectionBoundingBox,
-      alignment,
-    );
-    return group.map((element) => {
-      // update element
-      const updatedEle = scene.mutateElement(element, {
-        x: element.x + translation.x,
-        y: element.y + translation.y,
-      });
+  return groups
+    .filter((group) => group !== fixedUnit)
+    .flatMap((group) => {
+      const translation = calculateTranslation(
+        group,
+        referenceBoundingBox,
+        alignment,
+      );
+      return group.map((element) => {
+        // update element
+        const updatedEle = scene.mutateElement(element, {
+          x: element.x + translation.x,
+          y: element.y + translation.y,
+        });
 
-      // update bound elements
-      updateBoundElements(element, scene, {
-        simultaneouslyUpdated: group,
+        // update bound elements
+        updateBoundElements(element, scene, {
+          simultaneouslyUpdated: group,
+        });
+        return updatedEle;
       });
-      return updatedEle;
     });
-  });
 };
 
 const calculateTranslation = (
   group: readonly ExcalidrawElement[],
-  selectionBoundingBox: BoundingBox,
+  referenceBoundingBox: BoundingBox,
   { axis, position }: Alignment,
 ): { x: number; y: number } => {
   const groupBoundingBox = getCommonBoundingBox(group);
@@ -65,18 +201,18 @@ const calculateTranslation = (
   if (position === "start") {
     return {
       ...noTranslation,
-      [axis]: selectionBoundingBox[min] - groupBoundingBox[min],
+      [axis]: referenceBoundingBox[min] - groupBoundingBox[min],
     };
   } else if (position === "end") {
     return {
       ...noTranslation,
-      [axis]: selectionBoundingBox[max] - groupBoundingBox[max],
+      [axis]: referenceBoundingBox[max] - groupBoundingBox[max],
     };
   } // else if (position === "center") {
   return {
     ...noTranslation,
     [axis]:
-      (selectionBoundingBox[min] + selectionBoundingBox[max]) / 2 -
+      (referenceBoundingBox[min] + referenceBoundingBox[max]) / 2 -
       (groupBoundingBox[min] + groupBoundingBox[max]) / 2,
   };
 };
