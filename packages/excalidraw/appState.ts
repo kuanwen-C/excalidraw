@@ -15,6 +15,8 @@ import {
   DEFAULT_STICKY_NOTE_BG,
 } from "@excalidraw/common";
 
+import { validateExportPresets } from "./exportPreferences";
+
 import type { AppState, InputDevice, NormalizedZoomValue } from "./types";
 
 const defaultExportScale = EXPORT_SCALES.includes(devicePixelRatio)
@@ -70,6 +72,7 @@ export const getDefaultAppState = (): Omit<
     exportScale: defaultExportScale,
     exportEmbedScene: false,
     exportWithDarkMode: false,
+    exportPresets: [],
     fileHandle: null,
     gridSize: DEFAULT_GRID_SIZE,
     gridStep: DEFAULT_GRID_STEP,
@@ -216,6 +219,7 @@ const APP_STATE_STORAGE_CONF = (<
   exportEmbedScene: { browser: true, export: false, server: false },
   exportScale: { browser: true, export: false, server: false },
   exportWithDarkMode: { browser: true, export: false, server: false },
+  exportPresets: { browser: true, export: false, server: false },
   fileHandle: { browser: false, export: false, server: false },
   gridSize: { browser: true, export: true, server: true },
   gridStep: { browser: true, export: true, server: true },
@@ -313,7 +317,11 @@ const _clearAppStateForStorage = <
 };
 
 export const clearAppStateForLocalStorage = (appState: Partial<AppState>) => {
-  return _clearAppStateForStorage(appState, "browser");
+  const state = _clearAppStateForStorage(appState, "browser");
+  if ("exportPresets" in state) {
+    state.exportPresets = validateExportPresets(state.exportPresets);
+  }
+  return state;
 };
 
 export const cleanAppStateForExport = (appState: Partial<AppState>) => {

@@ -28,6 +28,7 @@ import {
 } from "../clipboard";
 
 import { t } from "../i18n";
+import { getExportPreferences } from "../exportPreferences";
 import { getSelectedElements, isSomeElementSelected } from "../scene";
 import { exportToCanvas, exportToSvg } from "../scene/export";
 
@@ -120,16 +121,22 @@ export const exportCanvas = async (
   if (elements.length === 0) {
     throw new Error(t("alerts.cannotExportEmptyCanvas"));
   }
+  const exportPreferences = getExportPreferences({
+    ...appState,
+    exportBackground,
+  });
+  const exportAppState = { ...appState, ...exportPreferences };
+
   if (type === "svg" || type === "clipboard-svg") {
     const svgPromise = exportToSvg(
       elements,
       {
-        exportBackground,
-        exportWithDarkMode: appState.exportWithDarkMode,
+        exportBackground: exportPreferences.exportBackground,
+        exportWithDarkMode: exportPreferences.exportWithDarkMode,
         viewBackgroundColor,
         exportPadding,
-        exportScale: appState.exportScale,
-        exportEmbedScene: appState.exportEmbedScene && type === "svg",
+        exportScale: exportPreferences.exportScale,
+        exportEmbedScene: exportPreferences.exportEmbedScene && type === "svg",
       },
       files,
       { exportingFrame },
@@ -147,7 +154,9 @@ export const exportCanvas = async (
         {
           description: "Export to SVG",
           name,
-          extension: appState.exportEmbedScene ? "excalidraw.svg" : "svg",
+          extension: exportPreferences.exportEmbedScene
+            ? "excalidraw.svg"
+            : "svg",
           mimeTypes: [IMAGE_MIME_TYPES.svg],
           fileHandle,
         },
@@ -163,8 +172,8 @@ export const exportCanvas = async (
     }
   }
 
-  const tempCanvas = exportToCanvas(elements, appState, files, {
-    exportBackground,
+  const tempCanvas = exportToCanvas(elements, exportAppState, files, {
+    exportBackground: exportPreferences.exportBackground,
     viewBackgroundColor,
     exportPadding,
     exportingFrame,
@@ -173,12 +182,12 @@ export const exportCanvas = async (
   if (type === "png") {
     let blob = canvasToBlob(tempCanvas);
 
-    if (appState.exportEmbedScene) {
+    if (exportPreferences.exportEmbedScene) {
       blob = blob.then((blob) =>
         import("./image").then(({ encodePngMetadata }) =>
           encodePngMetadata({
             blob,
-            metadata: serializeAsJSON(elements, appState, files, "local"),
+            metadata: serializeAsJSON(elements, exportAppState, files, "local"),
           }),
         ),
       );
@@ -187,7 +196,7 @@ export const exportCanvas = async (
     return fileSave(blob, {
       description: "Export to PNG",
       name,
-      extension: appState.exportEmbedScene ? "excalidraw.png" : "png",
+      extension: exportPreferences.exportEmbedScene ? "excalidraw.png" : "png",
       mimeTypes: [IMAGE_MIME_TYPES.png],
       fileHandle,
     });

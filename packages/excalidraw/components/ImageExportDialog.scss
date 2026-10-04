@@ -171,5 +171,38 @@
         }
       }
     }
+
+    &__preset {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+
+      & > label {
+        font-family: "Assistant";
+        font-weight: 600;
+        font-size: 1rem;
+      }
+
+      & > select {
+        width: 100%;
+        height: 2rem;
+      }
+
+      &__buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      &__error {
+        color: var(--color-danger);
+        font-family: "Assistant";
+        font-size: 0.875rem;
+      }
+
+      @include isMobile {
+        flex-basis: 100%;
+      }
+    }
   }
 }

@@ -556,6 +556,20 @@
       "exportToPng": "PNG",
       "exportToSvg": "SVG",
       "copyPngToClipboard": "Copy to clipboard"
+    },
+    "preset": {
+      "label": "Preset",
+      "none": "Choose a preset",
+      "namePlaceholder": "Preset name",
+      "save": "Save",
+      "apply": "Apply",
+      "rename": "Rename",
+      "delete": "Delete",
+      "error": {
+        "emptyName": "Enter a preset name.",
+        "duplicateName": "A preset with this name already exists.",
+        "notFound": "This export preset no longer exists."
+      }
     }
   },
   "encrypted": {
