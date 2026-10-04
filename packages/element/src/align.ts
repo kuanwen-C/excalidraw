@@ -2,7 +2,11 @@ import type { AppState } from "@excalidraw/excalidraw/types";
 
 import { updateBoundElements } from "./binding";
 import { getCommonBoundingBox } from "./bounds";
-import { getSelectedElementsByGroup } from "./groups";
+import {
+  getSelectedElementsByGroup,
+  getSelectedGroupIds,
+  isSelectedViaGroup,
+} from "./groups";
 import { isFrameLikeElement } from "./typeChecks";
 
 import { getNonDeletedElements } from ".";
@@ -20,6 +24,21 @@ export interface Alignment {
   position: "start" | "center" | "end";
   axis: "x" | "y";
 }
+
+/**
+ * The units alignment moves: each selected element, or each selected group
+ * as a whole, with bound text kept alongside its container.
+ */
+export const getAlignmentUnits = (
+  selectedElements: readonly NonDeletedExcalidrawElement[],
+  elementsMap: ElementsMap,
+  appState: Readonly<Pick<AppState, "selectedGroupIds" | "editingGroupId">>,
+): (readonly NonDeletedExcalidrawElement[])[] =>
+  getSelectedElementsByGroup(
+    selectedElements as NonDeletedExcalidrawElement[],
+    elementsMap,
+    appState,
+  ).map(getNonDeletedElements); // Nothing to align on deleted elements
 
 /**
  * Strategy deciding the box every selected unit aligns to. Kept apart from
@@ -90,6 +109,43 @@ export const getAlignReferenceElement = (
   return element as NonDeletedExcalidrawElement;
 };
 
+/**
+ * True when the selection is exactly one selected group. Alignment then
+ * buckets the group by its members instead of treating it as one unit.
+ */
+export const isSingleSelectedGroup = (
+  selectedElements: readonly NonDeletedExcalidrawElement[],
+  appState: Readonly<Pick<AppState, "selectedGroupIds" | "editingGroupId">>,
+) =>
+  getSelectedGroupIds(appState).length === 1 &&
+  selectedElements.every((element) => isSelectedViaGroup(appState, element));
+
+/**
+ * The strategy the align actions use for the current selection: the valid
+ * reference element's unit if there is one, else the selection box.
+ */
+export const getAlignReferenceBounds = (
+  selectedElements: readonly NonDeletedExcalidrawElement[],
+  appState: Readonly<
+    Pick<
+      AppState,
+      | "alignReferenceElementId"
+      | "selectedElementIds"
+      | "selectedGroupIds"
+      | "editingGroupId"
+    >
+  >,
+  elementsMap: ElementsMap,
+): ReferenceBounds => {
+  const referenceElement = getAlignReferenceElement(appState, elementsMap);
+  // a lone selected group is split into its members when aligned, so it
+  // can't be one fixed unit; its box is the selection box anyway
+  if (!referenceElement || isSingleSelectedGroup(selectedElements, appState)) {
+    return selectionBounds;
+  }
+  return referenceElementBounds(referenceElement.id);
+};
+
 export const alignElements = (
   selectedElements: NonDeletedExcalidrawElement[],
   alignment: Alignment,
@@ -97,11 +153,11 @@ export const alignElements = (
   appState: Readonly<AppState>,
   referenceBounds: ReferenceBounds = selectionBounds,
 ): NonDeletedExcalidrawElement[] => {
-  const groups = getSelectedElementsByGroup(
+  const groups = getAlignmentUnits(
     selectedElements,
     scene.getNonDeletedElementsMap(),
     appState,
-  ).map(getNonDeletedElements); // Nothing to align on deleted elements
+  );
   const { box: referenceBoundingBox, fixedUnit } = referenceBounds(
     selectedElements,
     groups,

@@ -1,15 +1,14 @@
 import {
   CaptureUpdateAction,
   getAlignReferenceElement,
-  getSelectedElementsByGroup,
-  getSelectedGroupIds,
+  getAlignmentUnits,
   isFrameLikeElement,
-  isSelectedViaGroup,
+  isSingleSelectedGroup,
 } from "@excalidraw/element";
 
 import { register } from "./register";
 
-import type { AppClassProperties, AppState, UIAppState } from "../types";
+import type { AppClassProperties, UIAppState } from "../types";
 
 /**
  * The selection can become the align reference if it is exactly one unit
@@ -33,15 +32,12 @@ const canSetAlignReference = (
   ) {
     return false;
   }
-  const isSingleSelectedGroup =
-    getSelectedGroupIds(appState).length === 1 &&
-    selectedElements.every((element) => isSelectedViaGroup(appState, element));
   return (
-    isSingleSelectedGroup ||
-    getSelectedElementsByGroup(
+    isSingleSelectedGroup(selectedElements, appState) ||
+    getAlignmentUnits(
       selectedElements,
       app.scene.getNonDeletedElementsMap(),
-      appState as Readonly<AppState>,
+      appState,
     ).length === 1
   );
 };
