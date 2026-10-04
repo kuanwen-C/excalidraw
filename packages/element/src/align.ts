@@ -16,44 +16,71 @@ export interface Alignment {
   axis: "x" | "y";
 }
 
+/**
+ * Strategy deciding the box every selected unit aligns to. Kept apart from
+ * `alignElements` so where the reference comes from never affects how units
+ * are bucketed, moved, or have their bindings updated.
+ *
+ * `fixedUnit` is the unit that defines the box, if any; it is never moved.
+ */
+export type ReferenceBounds = (
+  selectedElements: readonly NonDeletedExcalidrawElement[],
+  units: readonly (readonly NonDeletedExcalidrawElement[])[],
+) => {
+  box: BoundingBox;
+  fixedUnit: readonly NonDeletedExcalidrawElement[] | null;
+};
+
+/** Align to the bounding box of the whole selection (the default). */
+export const selectionBounds: ReferenceBounds = (selectedElements) => ({
+  box: getCommonBoundingBox(selectedElements),
+  fixedUnit: null,
+});
+
 export const alignElements = (
   selectedElements: NonDeletedExcalidrawElement[],
   alignment: Alignment,
   scene: Scene,
   appState: Readonly<AppState>,
+  referenceBounds: ReferenceBounds = selectionBounds,
 ): NonDeletedExcalidrawElement[] => {
   const groups = getSelectedElementsByGroup(
     selectedElements,
     scene.getNonDeletedElementsMap(),
     appState,
   ).map(getNonDeletedElements); // Nothing to align on deleted elements
-  const selectionBoundingBox = getCommonBoundingBox(selectedElements);
+  const { box: referenceBoundingBox, fixedUnit } = referenceBounds(
+    selectedElements,
+    groups,
+  );
 
-  return groups.flatMap((group) => {
-    const translation = calculateTranslation(
-      group,
-      selectionBoundingBox,
-      alignment,
-    );
-    return group.map((element) => {
-      // update element
-      const updatedEle = scene.mutateElement(element, {
-        x: element.x + translation.x,
-        y: element.y + translation.y,
-      });
+  return groups
+    .filter((group) => group !== fixedUnit)
+    .flatMap((group) => {
+      const translation = calculateTranslation(
+        group,
+        referenceBoundingBox,
+        alignment,
+      );
+      return group.map((element) => {
+        // update element
+        const updatedEle = scene.mutateElement(element, {
+          x: element.x + translation.x,
+          y: element.y + translation.y,
+        });
 
-      // update bound elements
-      updateBoundElements(element, scene, {
-        simultaneouslyUpdated: group,
+        // update bound elements
+        updateBoundElements(element, scene, {
+          simultaneouslyUpdated: group,
+        });
+        return updatedEle;
       });
-      return updatedEle;
     });
-  });
 };
 
 const calculateTranslation = (
   group: readonly ExcalidrawElement[],
-  selectionBoundingBox: BoundingBox,
+  referenceBoundingBox: BoundingBox,
   { axis, position }: Alignment,
 ): { x: number; y: number } => {
   const groupBoundingBox = getCommonBoundingBox(group);
@@ -65,18 +92,18 @@ const calculateTranslation = (
   if (position === "start") {
     return {
       ...noTranslation,
-      [axis]: selectionBoundingBox[min] - groupBoundingBox[min],
+      [axis]: referenceBoundingBox[min] - groupBoundingBox[min],
     };
   } else if (position === "end") {
     return {
       ...noTranslation,
-      [axis]: selectionBoundingBox[max] - groupBoundingBox[max],
+      [axis]: referenceBoundingBox[max] - groupBoundingBox[max],
     };
   } // else if (position === "center") {
   return {
     ...noTranslation,
     [axis]:
-      (selectionBoundingBox[min] + selectionBoundingBox[max]) / 2 -
+      (referenceBoundingBox[min] + referenceBoundingBox[max]) / 2 -
       (groupBoundingBox[min] + groupBoundingBox[max]) / 2,
   };
 };
