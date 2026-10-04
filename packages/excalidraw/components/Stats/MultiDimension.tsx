@@ -1,7 +1,6 @@
-import { pointFrom, type GlobalPoint } from "@excalidraw/math";
 import { useMemo } from "react";
 
-import { MIN_WIDTH_OR_HEIGHT } from "@excalidraw/common";
+import { MIN_WIDTH_OR_HEIGHT, getFontString } from "@excalidraw/common";
 import {
   getElementsInResizingFrame,
   getNonDeletedElements,
@@ -11,29 +10,38 @@ import {
 } from "@excalidraw/element";
 import {
   getStickyNoteResizeIntent,
-  isStickyNoteBoundText,
   isStickyNoteElement,
   updateStickyNoteLayout,
 } from "@excalidraw/element";
+import { resizeSingleElement } from "@excalidraw/element";
 import {
-  rescalePointsInElement,
-  resizeSingleElement,
+  getBoundTextElement,
+  redrawTextBoundingBox,
+  getMinTextElementWidth,
+  measureText,
+  wrapText,
 } from "@excalidraw/element";
-import { getBoundTextElement, handleBindTextResize } from "@excalidraw/element";
 
 import { isTextElement } from "@excalidraw/element";
 
 import { getCommonBounds } from "@excalidraw/utils";
 
 import type {
-  ElementsMap,
   NonDeletedExcalidrawElement,
+  ExcalidrawTextElement,
   NonDeletedSceneElementsMap,
 } from "@excalidraw/element/types";
 
 import type { Scene } from "@excalidraw/element";
 
+import { t } from "../../i18n";
+
 import DragInput from "./DragInput";
+import {
+  calculateDimensions,
+  calculateGroupDimensions,
+} from "./dimensionUtils";
+import { calculateGroupGeometry } from "./groupGeometry";
 import { getAtomicUnits, getStepSizedValue, isPropertyEditable } from "./utils";
 import { getElementsInAtomicUnit } from "./utils";
 
@@ -51,134 +59,80 @@ interface MultiDimensionProps {
   atomicUnits: AtomicUnit[];
   scene: Scene;
   appState: AppState;
+  shouldKeepAspectRatio: boolean;
 }
 
 const STEP_SIZE = 10;
 
-const getResizedUpdates = (
-  anchorX: number,
-  anchorY: number,
-  scale: number,
-  origElement: NonDeletedExcalidrawElement,
-) => {
-  const offsetX = origElement.x - anchorX;
-  const offsetY = origElement.y - anchorY;
-  const nextWidth = origElement.width * scale;
-  const nextHeight = origElement.height * scale;
-  const x = anchorX + offsetX * scale;
-  const y = anchorY + offsetY * scale;
-
-  return {
-    width: nextWidth,
-    height: nextHeight,
-    x,
-    y,
-    ...rescalePointsInElement(origElement, nextWidth, nextHeight, false),
-    ...(isTextElement(origElement)
-      ? { fontSize: origElement.fontSize * scale }
-      : {}),
-  };
+// The planner has already validated unlocked member angles as quarter turns.
+// Map the edited canvas axis to the member's local resize direction.
+const getLocalResizeHandle = (property: "width" | "height", angle: number) => {
+  const turn =
+    ((Math.round((angle % (2 * Math.PI)) / (Math.PI / 2)) % 4) + 4) % 4;
+  return property === "width"
+    ? (["e", "n", "w", "s"] as const)[turn]
+    : (["s", "e", "n", "w"] as const)[turn];
 };
 
-const resizeElementInGroup = (
-  anchorX: number,
-  anchorY: number,
+const resizeErrorKeys = {
+  "unsupported-angle": "stats.resizeUnsupportedAngle",
+  "zero-axis-expansion": "stats.resizeZeroAxis",
+  "zero-sized-bounds": "stats.resizeZeroBounds",
+  "invalid-input": "stats.resizeInvalidGeometry",
+  "non-finite-result": "stats.resizeInvalidGeometry",
+  "point-transform-mismatch": "stats.resizeInvalidGeometry",
+  "non-uniform-locked-target": "stats.resizeInvalidGeometry",
+  "unsupported-element": "stats.resizeUnsupportedElement",
+} as const;
+
+const getDimensionSizes = (
+  atomicUnits: AtomicUnit[],
+  elementsMap: NonDeletedSceneElementsMap,
   property: MultiDimensionProps["property"],
-  scale: number,
-  latestElement: NonDeletedExcalidrawElement,
-  origElement: NonDeletedExcalidrawElement,
-  originalElementsMap: ElementsMap,
-  scene: Scene,
-) => {
-  const elementsMap = scene.getNonDeletedElementsMap();
-
-  if (
-    isTextElement(latestElement) &&
-    isStickyNoteBoundText(latestElement, elementsMap)
-  ) {
-    // a group unit lists the note's label too; the note's layout owns it
-    // entirely (a direct scale here would overwrite the fitted size)
-    return;
-  }
-
-  const updates = getResizedUpdates(anchorX, anchorY, scale, origElement);
-
-  scene.mutateElement(latestElement, updates);
-
-  if (isStickyNoteElement(latestElement)) {
-    // group scaling is uniform: base height and font ceiling scale with the
-    // note (empty notes included); the layout runs the arrow pass itself
-    updateStickyNoteLayout(latestElement, scene, {
-      ...getStickyNoteResizeIntent(
-        latestElement,
-        originalElementsMap,
-        property === "width" ? "e" : "s",
-        { proportional: true, fromCenter: false },
-      ),
-      anchor: "top",
-    });
-    return;
-  }
-
-  const boundTextElement = getBoundTextElement(
-    origElement,
-    originalElementsMap,
-  );
-  if (boundTextElement) {
-    const newFontSize = boundTextElement.fontSize * scale;
-    updateBoundElements(latestElement, scene);
-    const latestBoundTextElement = elementsMap.get(boundTextElement.id);
-    if (latestBoundTextElement && isTextElement(latestBoundTextElement)) {
-      scene.mutateElement(latestBoundTextElement, {
-        fontSize: newFontSize,
-      });
-      handleBindTextResize(
-        latestElement,
-        scene,
-        property === "width" ? "e" : "s",
-        true,
+) =>
+  atomicUnits.flatMap((atomicUnit) => {
+    const elementsInUnit = getElementsInAtomicUnit(atomicUnit, elementsMap);
+    if (elementsInUnit.length > 1) {
+      const [x1, y1, x2, y2] = getCommonBounds(
+        elementsInUnit.map((el) => el.latest),
       );
+      return [
+        Math.round((property === "width" ? x2 - x1 : y2 - y1) * 100) / 100,
+      ];
     }
-  }
+    const [element] = elementsInUnit;
+    return element ? [Math.round(element.latest[property] * 100) / 100] : [];
+  });
+
+const getDimensionValue = (sizes: number[]): number | "Mixed" =>
+  new Set(sizes).size === 1 ? Math.round(sizes[0] * 100) / 100 : "Mixed";
+
+type GeometryUpdate = Extract<
+  ReturnType<typeof calculateGroupGeometry>,
+  { status: "supported" }
+>["updates"][number];
+
+type GroupMemberPlan = {
+  original: NonDeletedExcalidrawElement;
+  latest: NonDeletedExcalidrawElement;
+  update: GeometryUpdate;
+  boundTextFontSize?: number;
+  stickyIntent?: ReturnType<typeof getStickyNoteResizeIntent>;
+  textLayout?: Pick<
+    ExcalidrawTextElement,
+    "x" | "y" | "width" | "height" | "text" | "originalText" | "autoResize"
+  >;
 };
 
-const resizeGroup = (
-  nextWidth: number,
-  nextHeight: number,
-  initialHeight: number,
-  aspectRatio: number,
-  anchor: GlobalPoint,
-  property: MultiDimensionProps["property"],
-  latestElements: NonDeletedExcalidrawElement[],
-  originalElements: NonDeletedExcalidrawElement[],
-  originalElementsMap: ElementsMap,
-  scene: Scene,
-) => {
-  // keep aspect ratio for groups
-  if (property === "width") {
-    nextHeight = Math.round((nextWidth / aspectRatio) * 100) / 100;
-  } else {
-    nextWidth = Math.round(nextHeight * aspectRatio * 100) / 100;
-  }
-
-  const scale = nextHeight / initialHeight;
-
-  for (let i = 0; i < originalElements.length; i++) {
-    const origElement = originalElements[i];
-    const latestElement = latestElements[i];
-
-    resizeElementInGroup(
-      anchor[0],
-      anchor[1],
-      property,
-      scale,
-      latestElement,
-      origElement,
-      originalElementsMap,
-      scene,
-    );
-  }
-};
+type UnitPlan =
+  | { kind: "group"; members: GroupMemberPlan[] }
+  | {
+      kind: "single";
+      original: NonDeletedExcalidrawElement;
+      latest: NonDeletedExcalidrawElement;
+      dimensions: { width: number; height: number };
+      keepAspectRatio: boolean;
+    };
 
 const handleDimensionChange: DragInputCallbackType<
   MultiDimensionProps["property"]
@@ -187,243 +141,295 @@ const handleDimensionChange: DragInputCallbackType<
   originalElements,
   originalElementsMap,
   originalAppState,
+  shouldKeepAspectRatio,
   shouldChangeByStepSize,
   nextValue,
   scene,
   property,
   setAppState,
-  app,
+  setInputValue,
 }) => {
   const elementsMap = scene.getNonDeletedElementsMap();
   const atomicUnits = getAtomicUnits(originalElements, originalAppState);
-  if (nextValue !== undefined) {
-    for (const atomicUnit of atomicUnits) {
-      const elementsInUnit = getElementsInAtomicUnit(
-        atomicUnit,
-        elementsMap,
-        originalElementsMap,
-      );
-
-      if (elementsInUnit.length > 1) {
-        const latestElements = elementsInUnit.map((el) => el.latest!);
-        const originalElements = elementsInUnit.map((el) => el.original!);
-        const [x1, y1, x2, y2] = getCommonBounds(originalElements);
-        const initialWidth = x2 - x1;
-        const initialHeight = y2 - y1;
-        const aspectRatio = initialWidth / initialHeight;
-        const nextWidth = Math.max(
-          MIN_WIDTH_OR_HEIGHT,
-          property === "width" ? Math.max(0, nextValue) : initialWidth,
-        );
-        const nextHeight = Math.max(
-          MIN_WIDTH_OR_HEIGHT,
-          property === "height" ? Math.max(0, nextValue) : initialHeight,
-        );
-
-        resizeGroup(
-          nextWidth,
-          nextHeight,
-          initialHeight,
-          aspectRatio,
-          pointFrom(x1, y1),
+  const selectedIds = new Set(originalElements.map((element) => element.id));
+  const keepAspectRatio = shouldKeepAspectRatio;
+  const restoreInputValue = () =>
+    setInputValue(
+      getDimensionValue(
+        getDimensionSizes(
+          atomicUnits,
+          scene.getNonDeletedElementsMap(),
           property,
-          latestElements,
-          originalElements,
-          originalElementsMap,
-          scene,
-        );
-      } else {
-        const [el] = elementsInUnit;
-        const latestElement = el?.latest;
-        const origElement = el?.original;
+        ),
+      ),
+    );
+  const rejectEdit = (reason: keyof typeof resizeErrorKeys) => {
+    restoreInputValue();
+    setAppState({ toast: { message: t(resizeErrorKeys[reason]) } });
+  };
+  const handle = property === "width" ? "e" : "s";
+  const plans: UnitPlan[] = [];
 
-        if (
-          latestElement &&
-          origElement &&
-          isPropertyEditable(latestElement, property)
-        ) {
-          let nextWidth =
-            property === "width" ? Math.max(0, nextValue) : latestElement.width;
-          if (property === "width") {
-            if (shouldChangeByStepSize) {
-              nextWidth = getStepSizedValue(nextWidth, STEP_SIZE);
-            } else {
-              nextWidth = Math.round(nextWidth);
-            }
-          }
-
-          let nextHeight =
-            property === "height"
-              ? Math.max(0, nextValue)
-              : latestElement.height;
-          if (property === "height") {
-            if (shouldChangeByStepSize) {
-              nextHeight = getStepSizedValue(nextHeight, STEP_SIZE);
-            } else {
-              nextHeight = Math.round(nextHeight);
-            }
-          }
-
-          nextWidth = Math.max(MIN_WIDTH_OR_HEIGHT, nextWidth);
-          nextHeight = Math.max(MIN_WIDTH_OR_HEIGHT, nextHeight);
-
-          resizeSingleElement(
-            nextWidth,
-            nextHeight,
-            latestElement,
-            origElement,
-            originalElementsMap,
-            scene,
-            property === "width" ? "e" : "s",
-            {
-              shouldInformMutation: false,
-            },
-          );
-
-          // Handle frame membership update for resized frames
-          if (isFrameLikeElement(latestElement)) {
-            const nextElementsInFrame = getElementsInResizingFrame(
-              scene.getElementsIncludingDeleted(),
-              latestElement,
-              originalAppState,
-              scene.getNonDeletedElementsMap(),
-            );
-
-            const updatedElements = replaceAllElementsInFrame(
-              scene.getElementsIncludingDeleted(),
-              nextElementsInFrame,
-              latestElement,
-            );
-
-            scene.replaceAllElements(updatedElements);
-          }
-        }
-      }
-    }
-
-    scene.triggerUpdate();
-
-    return;
-  }
-
-  const changeInWidth = property === "width" ? accumulatedChange : 0;
-  const changeInHeight = property === "height" ? accumulatedChange : 0;
-  const elementsToHighlight: NonDeletedExcalidrawElement[] = [];
-
+  // Plan every atomic unit before touching the scene. All sizes and font/layout
+  // intents are derived from the same gesture-start snapshot.
   for (const atomicUnit of atomicUnits) {
     const elementsInUnit = getElementsInAtomicUnit(
       atomicUnit,
       elementsMap,
       originalElementsMap,
     );
-
-    if (elementsInUnit.length > 1) {
-      const latestElements = elementsInUnit.map((el) => el.latest!);
-      const originalElements = elementsInUnit.map((el) => el.original!);
-
-      const [x1, y1, x2, y2] = getCommonBounds(originalElements);
-      const initialWidth = x2 - x1;
-      const initialHeight = y2 - y1;
-      const aspectRatio = initialWidth / initialHeight;
-      let nextWidth = Math.max(0, initialWidth + changeInWidth);
-      if (property === "width") {
-        if (shouldChangeByStepSize) {
-          nextWidth = getStepSizedValue(nextWidth, STEP_SIZE);
-        } else {
-          nextWidth = Math.round(nextWidth);
+    if (!elementsInUnit.length) {
+      continue;
+    }
+    const isGroup = elementsInUnit.length > 1;
+    const [{ original, latest }] = elementsInUnit;
+    // Ungrouped text retains its independent W/H layout behavior, even when
+    // other selected units use the shared lock. Grouped text follows its group.
+    const unitKeepsAspectRatio =
+      keepAspectRatio && (isGroup || !isTextElement(original));
+    if (!isGroup && !isPropertyEditable(latest, property)) {
+      continue;
+    }
+    const bounds = isGroup
+      ? getCommonBounds(elementsInUnit.map(({ original }) => original))
+      : null;
+    const originalWidth = bounds ? bounds[2] - bounds[0] : original.width;
+    const originalHeight = bounds ? bounds[3] - bounds[1] : original.height;
+    let requestedValue = nextValue;
+    if (requestedValue === undefined) {
+      const draggedValue = Math.max(
+        0,
+        (property === "width" ? originalWidth : originalHeight) +
+          accumulatedChange,
+      );
+      requestedValue = shouldChangeByStepSize
+        ? getStepSizedValue(draggedValue, STEP_SIZE)
+        : Math.round(draggedValue);
+    }
+    const dimensions = (
+      isGroup ? calculateGroupDimensions : calculateDimensions
+    )({
+      originalWidth,
+      originalHeight,
+      property,
+      requestedValue,
+      keepAspectRatio: unitKeepsAspectRatio,
+      minimumSize: MIN_WIDTH_OR_HEIGHT,
+    });
+    if (!dimensions) {
+      rejectEdit(
+        isGroup && originalWidth === 0 && originalHeight === 0
+          ? "zero-sized-bounds"
+          : isGroup &&
+            (property === "width" ? originalWidth : originalHeight) === 0 &&
+            requestedValue > 0
+          ? "zero-axis-expansion"
+          : "invalid-input",
+      );
+      return;
+    }
+    // Bound labels are owned by their selected containers, even if the group
+    // unit also lists the label. Standalone text owns its own layout.
+    const members = elementsInUnit.filter(
+      ({ original }) =>
+        !(
+          isTextElement(original) &&
+          original.containerId &&
+          selectedIds.has(original.containerId)
+        ),
+    );
+    if (!members.length) {
+      continue;
+    }
+    if (!bounds) {
+      plans.push({
+        kind: "single",
+        original,
+        latest,
+        dimensions,
+        keepAspectRatio: unitKeepsAspectRatio,
+      });
+      continue;
+    }
+    const result = calculateGroupGeometry({
+      originalBounds: bounds,
+      originalMembers: members.map(({ original }) => original),
+      dimensions,
+      keepAspectRatio,
+    });
+    if (result.status !== "supported") {
+      rejectEdit(result.reason);
+      return;
+    }
+    const scale =
+      originalHeight > 0
+        ? dimensions.height / originalHeight
+        : dimensions.width / originalWidth;
+    const groupMembers: GroupMemberPlan[] = [];
+    for (let index = 0; index < members.length; index++) {
+      const { original, latest } = members[index];
+      const update = result.updates[index];
+      const label = getBoundTextElement(original, originalElementsMap);
+      const boundTextFontSize = label
+        ? label.fontSize * (keepAspectRatio ? scale : 1)
+        : undefined;
+      const stickyIntent = isStickyNoteElement(original)
+        ? getStickyNoteResizeIntent(
+            { ...original, ...update },
+            originalElementsMap,
+            keepAspectRatio
+              ? handle
+              : getLocalResizeHandle(property, original.angle),
+            { proportional: keepAspectRatio, fromCenter: false },
+          )
+        : undefined;
+      if (
+        [
+          boundTextFontSize,
+          stickyIntent?.baseHeight,
+          stickyIntent?.baseFontSize,
+        ].some((value) => value !== undefined && !Number.isFinite(value))
+      ) {
+        rejectEdit("invalid-input");
+        return;
+      }
+      let textLayout: GroupMemberPlan["textLayout"];
+      if (!keepAspectRatio && isTextElement(original)) {
+        const font = getFontString(original);
+        const width = Math.max(
+          update.width,
+          getMinTextElementWidth(font, original.lineHeight),
+        );
+        const text = wrapText(original.originalText, font, width);
+        const { height } = measureText(text, font, original.lineHeight);
+        // Text height is content-driven. Preserve the transformed center when
+        // rewrapping changes the planned box, including at quarter turns.
+        textLayout = {
+          x: update.x + (update.width - width) / 2,
+          y: update.y + (update.height - height) / 2,
+          width,
+          height,
+          text,
+          originalText: original.originalText,
+          autoResize: false,
+        };
+        if (
+          ![textLayout.x, textLayout.y, width, height].every(Number.isFinite)
+        ) {
+          rejectEdit("invalid-input");
+          return;
         }
       }
+      groupMembers.push({
+        original,
+        latest,
+        update,
+        boundTextFontSize,
+        stickyIntent,
+        textLayout,
+      });
+    }
+    plans.push({ kind: "group", members: groupMembers });
+  }
 
-      let nextHeight = Math.max(0, initialHeight + changeInHeight);
-      if (property === "height") {
-        if (shouldChangeByStepSize) {
-          nextHeight = getStepSizedValue(nextHeight, STEP_SIZE);
-        } else {
-          nextHeight = Math.round(nextHeight);
-        }
+  const simultaneouslyUpdated = plans.flatMap((plan) =>
+    plan.kind === "group"
+      ? plan.members.map(({ latest }) => latest)
+      : [plan.latest],
+  );
+  for (const plan of plans) {
+    if (plan.kind === "group") {
+      for (const {
+        latest,
+        update: { id, ...update },
+        textLayout,
+      } of plan.members) {
+        scene.mutateElement(latest, { ...update, ...textLayout });
       }
-
-      nextWidth = Math.max(MIN_WIDTH_OR_HEIGHT, nextWidth);
-      nextHeight = Math.max(MIN_WIDTH_OR_HEIGHT, nextHeight);
-
-      resizeGroup(
-        nextWidth,
-        nextHeight,
-        initialHeight,
-        aspectRatio,
-        pointFrom(x1, y1),
-        property,
-        latestElements,
-        originalElements,
+    } else {
+      resizeSingleElement(
+        plan.dimensions.width,
+        plan.dimensions.height,
+        plan.latest,
+        plan.original,
         originalElementsMap,
         scene,
+        handle,
+        {
+          shouldInformMutation: false,
+          shouldMaintainAspectRatio: plan.keepAspectRatio,
+        },
       );
-    } else {
-      const [el] = elementsInUnit;
-      const latestElement = el?.latest;
-      const origElement = el?.original;
-
-      if (
-        latestElement &&
-        origElement &&
-        isPropertyEditable(latestElement, property)
-      ) {
-        let nextWidth = Math.max(0, origElement.width + changeInWidth);
-        if (property === "width") {
-          if (shouldChangeByStepSize) {
-            nextWidth = getStepSizedValue(nextWidth, STEP_SIZE);
-          } else {
-            nextWidth = Math.round(nextWidth);
-          }
-        }
-
-        let nextHeight = Math.max(0, origElement.height + changeInHeight);
-        if (property === "height") {
-          if (shouldChangeByStepSize) {
-            nextHeight = getStepSizedValue(nextHeight, STEP_SIZE);
-          } else {
-            nextHeight = Math.round(nextHeight);
-          }
-        }
-
-        nextWidth = Math.max(MIN_WIDTH_OR_HEIGHT, nextWidth);
-        nextHeight = Math.max(MIN_WIDTH_OR_HEIGHT, nextHeight);
-
-        resizeSingleElement(
-          nextWidth,
-          nextHeight,
-          latestElement,
-          origElement,
-          originalElementsMap,
-          scene,
-          property === "width" ? "e" : "s",
-          {
-            shouldInformMutation: false,
-          },
-        );
-
-        // Handle highlighting frame element candidates
-        if (isFrameLikeElement(latestElement)) {
-          const nextElementsInFrame = getNonDeletedElements(
-            getElementsInResizingFrame(
-              scene.getElementsIncludingDeleted(),
-              latestElement,
-              originalAppState,
-              scene.getNonDeletedElementsMap(),
-            ),
-          );
-
-          elementsToHighlight.push(...nextElementsInFrame);
-        }
+    }
+  }
+  // Layout owns each bound label exactly once, after group geometry is in place.
+  for (const plan of plans) {
+    if (plan.kind !== "group") {
+      continue;
+    }
+    for (const {
+      original,
+      latest,
+      boundTextFontSize,
+      stickyIntent,
+    } of plan.members) {
+      if (isStickyNoteElement(latest)) {
+        updateStickyNoteLayout(latest, scene, {
+          ...stickyIntent,
+          ...(keepAspectRatio ? { anchor: "top" as const } : {}),
+          bindings: { simultaneouslyUpdated },
+        });
+        continue;
       }
+      const label = getBoundTextElement(original, originalElementsMap);
+      const latestLabel =
+        label && scene.getNonDeletedElementsMap().get(label.id);
+      if (
+        latestLabel &&
+        isTextElement(latestLabel) &&
+        boundTextFontSize !== undefined
+      ) {
+        scene.mutateElement(latestLabel, {
+          fontSize: boundTextFontSize,
+          originalText: label!.originalText,
+        });
+        // Apply the same width/height content constraints as Undo/Redo. The
+        // resize-only helper grows height but can leave a label wider than a
+        // tiny container, causing history replay to produce different bounds.
+        redrawTextBoundingBox(latestLabel, latest, scene);
+      }
+      updateBoundElements(latest, scene, { simultaneouslyUpdated });
     }
   }
 
-  setAppState({
-    elementsToHighlight,
-  });
-
+  const elementsToHighlight: NonDeletedExcalidrawElement[] = [];
+  for (const latest of simultaneouslyUpdated) {
+    if (!isFrameLikeElement(latest)) {
+      continue;
+    }
+    const nextElementsInFrame = getElementsInResizingFrame(
+      scene.getElementsIncludingDeleted(),
+      latest,
+      originalAppState,
+      scene.getNonDeletedElementsMap(),
+    );
+    if (nextValue !== undefined) {
+      scene.replaceAllElements(
+        replaceAllElementsInFrame(
+          scene.getElementsIncludingDeleted(),
+          nextElementsInFrame,
+          latest,
+        ),
+      );
+    } else {
+      elementsToHighlight.push(...getNonDeletedElements(nextElementsInFrame));
+    }
+  }
+  if (nextValue === undefined) {
+    setAppState({ elementsToHighlight });
+  }
   scene.triggerUpdate();
+  restoreInputValue();
 };
 
 const handleDragFinished: DragFinishedCallbackType = ({
@@ -433,30 +439,27 @@ const handleDragFinished: DragFinishedCallbackType = ({
   originalAppState,
 }) => {
   const elementsMap = app.scene.getNonDeletedElementsMap();
-  const origElement = originalElements?.[0];
-  const latestElement = origElement && elementsMap.get(origElement.id);
-
-  // Handle frame membership update for resized frames
-  if (latestElement && isFrameLikeElement(latestElement)) {
+  // Every resized frame participates, including frames inside group units.
+  for (const original of originalElements ?? []) {
+    const latestElement = elementsMap.get(original.id);
+    if (!latestElement || !isFrameLikeElement(latestElement)) {
+      continue;
+    }
     const nextElementsInFrame = getElementsInResizingFrame(
       app.scene.getElementsIncludingDeleted(),
       latestElement,
       originalAppState,
       app.scene.getNonDeletedElementsMap(),
     );
-
-    const updatedElements = replaceAllElementsInFrame(
-      app.scene.getElementsIncludingDeleted(),
-      nextElementsInFrame,
-      latestElement,
+    app.scene.replaceAllElements(
+      replaceAllElementsInFrame(
+        app.scene.getElementsIncludingDeleted(),
+        nextElementsInFrame,
+        latestElement,
+      ),
     );
-
-    app.scene.replaceAllElements(updatedElements);
-
-    setAppState({
-      elementsToHighlight: null,
-    });
   }
+  setAppState({ elementsToHighlight: null });
 };
 
 const MultiDimension = ({
@@ -466,33 +469,14 @@ const MultiDimension = ({
   atomicUnits,
   scene,
   appState,
+  shouldKeepAspectRatio,
 }: MultiDimensionProps) => {
   const sizes = useMemo(
-    () =>
-      atomicUnits.map((atomicUnit) => {
-        const elementsInUnit = getElementsInAtomicUnit(atomicUnit, elementsMap);
-
-        if (elementsInUnit.length > 1) {
-          const [x1, y1, x2, y2] = getCommonBounds(
-            elementsInUnit.map((el) => el.latest),
-          );
-          return (
-            Math.round((property === "width" ? x2 - x1 : y2 - y1) * 100) / 100
-          );
-        }
-        const [el] = elementsInUnit;
-
-        return (
-          Math.round(
-            (property === "width" ? el.latest.width : el.latest.height) * 100,
-          ) / 100
-        );
-      }),
+    () => getDimensionSizes(atomicUnits, elementsMap, property),
     [elementsMap, atomicUnits, property],
   );
 
-  const value =
-    new Set(sizes).size === 1 ? Math.round(sizes[0] * 100) / 100 : "Mixed";
+  const value = getDimensionValue(sizes);
 
   const editable = sizes.length > 0;
 
@@ -504,6 +488,7 @@ const MultiDimension = ({
       value={value}
       editable={editable}
       appState={appState}
+      shouldKeepAspectRatio={shouldKeepAspectRatio}
       property={property}
       scene={scene}
       dragFinishedCallback={handleDragFinished}

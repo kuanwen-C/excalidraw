@@ -551,6 +551,12 @@
     "link": "Blog post on end-to-end encryption in Excalidraw"
   },
   "stats": {
+    "keepProportions": "Keep proportions",
+    "resizeUnsupportedAngle": "Unlocked group resizing supports only 0°, 90°, 180°, and 270° rotations. Enable the proportions lock to resize this selection.",
+    "resizeZeroAxis": "A group cannot be expanded along an originally zero-width or zero-height axis.",
+    "resizeZeroBounds": "A group with zero width and height cannot be resized.",
+    "resizeInvalidGeometry": "This size cannot be applied because it would produce invalid geometry.",
+    "resizeUnsupportedElement": "This selection contains an element that cannot be resized with these settings.",
     "angle": "Angle",
     "shapes": "Shapes",
     "height": "Height",

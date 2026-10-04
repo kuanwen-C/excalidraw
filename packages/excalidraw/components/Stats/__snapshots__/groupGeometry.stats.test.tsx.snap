@@ -1,0 +1,785 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`locked group planner compatibility with current Stats resizing > height entry > curved arrow > roughness 1 > matches the existing group transformation at angle 0 1`] = `
+{
+  "bounds": [
+    "78.80218",
+    "158.22129",
+    "317.08950",
+    "338.54007",
+  ],
+  "members": [
+    {
+      "angle": 0,
+      "endArrowhead": "arrow",
+      "height": "176.88812",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-196.54236",
+          "-58.96271",
+        ],
+        [
+          "-98.27118",
+          "117.92542",
+        ],
+        [
+          "39.30847",
+          "-19.65424",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "arrow",
+      "width": "235.85083",
+      "x": "278.53321",
+      "y": "220.50561",
+    },
+    {
+      "angle": 0,
+      "height": "19.65424",
+      "type": "rectangle",
+      "width": "19.65424",
+      "x": "180.26203",
+      "y": "240.15984",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > height entry > curved arrow > roughness 1 > matches the existing group transformation at angle 0.73 1`] = `
+{
+  "bounds": [
+    "97.78428",
+    "131.79251",
+    "273.74222",
+    "312.29969",
+  ],
+  "members": [
+    {
+      "angle": "0.73000",
+      "endArrowhead": "arrow",
+      "height": "153.24013",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-170.26681",
+          "-51.08004",
+        ],
+        [
+          "-85.13341",
+          "102.16009",
+        ],
+        [
+          "34.05336",
+          "-17.02668",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "arrow",
+      "width": "204.32018",
+      "x": "238.29431",
+      "y": "230.57809",
+    },
+    {
+      "angle": 0,
+      "height": "17.02668",
+      "type": "rectangle",
+      "width": "17.02668",
+      "x": "153.16090",
+      "y": "247.60477",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > height entry > curved arrow > roughness 2 > matches the existing group transformation at angle 0 1`] = `
+{
+  "bounds": [
+    "78.78121",
+    "158.23423",
+    "318.39549",
+    "338.95391",
+  ],
+  "members": [
+    {
+      "angle": 0,
+      "endArrowhead": "arrow",
+      "height": "177.71371",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-197.45968",
+          "-59.23790",
+        ],
+        [
+          "-98.72984",
+          "118.47581",
+        ],
+        [
+          "39.49194",
+          "-19.74597",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "arrow",
+      "width": "236.95161",
+      "x": "280.65866",
+      "y": "220.56173",
+    },
+    {
+      "angle": 0,
+      "height": "19.74597",
+      "type": "rectangle",
+      "width": "19.74597",
+      "x": "181.92883",
+      "y": "240.30769",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > height entry > curved arrow > roughness 2 > matches the existing group transformation at angle 0.73 1`] = `
+{
+  "bounds": [
+    "97.40439",
+    "132.02997",
+    "276.72292",
+    "313.22909",
+  ],
+  "members": [
+    {
+      "angle": "0.73000",
+      "endArrowhead": "arrow",
+      "height": "154.63781",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-171.81979",
+          "-51.54594",
+        ],
+        [
+          "-85.90990",
+          "103.09187",
+        ],
+        [
+          "34.36396",
+          "-17.18198",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "arrow",
+      "width": "206.18375",
+      "x": "240.63340",
+      "y": "230.84407",
+    },
+    {
+      "angle": 0,
+      "height": "17.18198",
+      "type": "rectangle",
+      "width": "17.18198",
+      "x": "154.72351",
+      "y": "248.02605",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > height entry > curved line > roughness 1 > matches the existing group transformation at angle 0 1`] = `
+{
+  "bounds": [
+    "78.80218",
+    "158.22129",
+    "317.08950",
+    "338.54007",
+  ],
+  "members": [
+    {
+      "angle": 0,
+      "endArrowhead": null,
+      "height": "176.88812",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-196.54236",
+          "-58.96271",
+        ],
+        [
+          "-98.27118",
+          "117.92542",
+        ],
+        [
+          "39.30847",
+          "-19.65424",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "line",
+      "width": "235.85083",
+      "x": "278.53321",
+      "y": "220.50561",
+    },
+    {
+      "angle": 0,
+      "height": "19.65424",
+      "type": "rectangle",
+      "width": "19.65424",
+      "x": "180.26203",
+      "y": "240.15984",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > height entry > curved line > roughness 1 > matches the existing group transformation at angle 0.73 1`] = `
+{
+  "bounds": [
+    "97.78428",
+    "131.79251",
+    "273.74222",
+    "312.29969",
+  ],
+  "members": [
+    {
+      "angle": "0.73000",
+      "endArrowhead": null,
+      "height": "153.24013",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-170.26681",
+          "-51.08004",
+        ],
+        [
+          "-85.13341",
+          "102.16009",
+        ],
+        [
+          "34.05336",
+          "-17.02668",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "line",
+      "width": "204.32018",
+      "x": "238.29431",
+      "y": "230.57809",
+    },
+    {
+      "angle": 0,
+      "height": "17.02668",
+      "type": "rectangle",
+      "width": "17.02668",
+      "x": "153.16090",
+      "y": "247.60477",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > height entry > curved line > roughness 2 > matches the existing group transformation at angle 0 1`] = `
+{
+  "bounds": [
+    "78.78121",
+    "158.23423",
+    "318.39549",
+    "338.95391",
+  ],
+  "members": [
+    {
+      "angle": 0,
+      "endArrowhead": null,
+      "height": "177.71371",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-197.45968",
+          "-59.23790",
+        ],
+        [
+          "-98.72984",
+          "118.47581",
+        ],
+        [
+          "39.49194",
+          "-19.74597",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "line",
+      "width": "236.95161",
+      "x": "280.65866",
+      "y": "220.56173",
+    },
+    {
+      "angle": 0,
+      "height": "19.74597",
+      "type": "rectangle",
+      "width": "19.74597",
+      "x": "181.92883",
+      "y": "240.30769",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > height entry > curved line > roughness 2 > matches the existing group transformation at angle 0.73 1`] = `
+{
+  "bounds": [
+    "97.40439",
+    "132.02997",
+    "276.72292",
+    "313.22909",
+  ],
+  "members": [
+    {
+      "angle": "0.73000",
+      "endArrowhead": null,
+      "height": "154.63781",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-171.81979",
+          "-51.54594",
+        ],
+        [
+          "-85.90990",
+          "103.09187",
+        ],
+        [
+          "34.36396",
+          "-17.18198",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "line",
+      "width": "206.18375",
+      "x": "240.63340",
+      "y": "230.84407",
+    },
+    {
+      "angle": 0,
+      "height": "17.18198",
+      "type": "rectangle",
+      "width": "17.18198",
+      "x": "154.72351",
+      "y": "248.02605",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > width entry > curved arrow > roughness 1 > matches the existing group transformation at angle 0 1`] = `
+{
+  "bounds": [
+    "78.80218",
+    "158.22129",
+    "317.08950",
+    "338.54007",
+  ],
+  "members": [
+    {
+      "angle": 0,
+      "endArrowhead": "arrow",
+      "height": "176.88812",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-196.54236",
+          "-58.96271",
+        ],
+        [
+          "-98.27118",
+          "117.92542",
+        ],
+        [
+          "39.30847",
+          "-19.65424",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "arrow",
+      "width": "235.85083",
+      "x": "278.53321",
+      "y": "220.50561",
+    },
+    {
+      "angle": 0,
+      "height": "19.65424",
+      "type": "rectangle",
+      "width": "19.65424",
+      "x": "180.26203",
+      "y": "240.15984",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > width entry > curved arrow > roughness 1 > matches the existing group transformation at angle 0.73 1`] = `
+{
+  "bounds": [
+    "97.78428",
+    "131.79251",
+    "273.74222",
+    "312.29969",
+  ],
+  "members": [
+    {
+      "angle": "0.73000",
+      "endArrowhead": "arrow",
+      "height": "153.24013",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-170.26681",
+          "-51.08004",
+        ],
+        [
+          "-85.13341",
+          "102.16009",
+        ],
+        [
+          "34.05336",
+          "-17.02668",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "arrow",
+      "width": "204.32018",
+      "x": "238.29431",
+      "y": "230.57809",
+    },
+    {
+      "angle": 0,
+      "height": "17.02668",
+      "type": "rectangle",
+      "width": "17.02668",
+      "x": "153.16090",
+      "y": "247.60477",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > width entry > curved arrow > roughness 2 > matches the existing group transformation at angle 0 1`] = `
+{
+  "bounds": [
+    "78.78121",
+    "158.23423",
+    "318.39549",
+    "338.95391",
+  ],
+  "members": [
+    {
+      "angle": 0,
+      "endArrowhead": "arrow",
+      "height": "177.71371",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-197.45968",
+          "-59.23790",
+        ],
+        [
+          "-98.72984",
+          "118.47581",
+        ],
+        [
+          "39.49194",
+          "-19.74597",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "arrow",
+      "width": "236.95161",
+      "x": "280.65866",
+      "y": "220.56173",
+    },
+    {
+      "angle": 0,
+      "height": "19.74597",
+      "type": "rectangle",
+      "width": "19.74597",
+      "x": "181.92883",
+      "y": "240.30769",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > width entry > curved arrow > roughness 2 > matches the existing group transformation at angle 0.73 1`] = `
+{
+  "bounds": [
+    "97.40439",
+    "132.02997",
+    "276.72292",
+    "313.22909",
+  ],
+  "members": [
+    {
+      "angle": "0.73000",
+      "endArrowhead": "arrow",
+      "height": "154.63781",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-171.81979",
+          "-51.54594",
+        ],
+        [
+          "-85.90990",
+          "103.09187",
+        ],
+        [
+          "34.36396",
+          "-17.18198",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "arrow",
+      "width": "206.18375",
+      "x": "240.63340",
+      "y": "230.84407",
+    },
+    {
+      "angle": 0,
+      "height": "17.18198",
+      "type": "rectangle",
+      "width": "17.18198",
+      "x": "154.72351",
+      "y": "248.02605",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > width entry > curved line > roughness 1 > matches the existing group transformation at angle 0 1`] = `
+{
+  "bounds": [
+    "78.80218",
+    "158.22129",
+    "317.08950",
+    "338.54007",
+  ],
+  "members": [
+    {
+      "angle": 0,
+      "endArrowhead": null,
+      "height": "176.88812",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-196.54236",
+          "-58.96271",
+        ],
+        [
+          "-98.27118",
+          "117.92542",
+        ],
+        [
+          "39.30847",
+          "-19.65424",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "line",
+      "width": "235.85083",
+      "x": "278.53321",
+      "y": "220.50561",
+    },
+    {
+      "angle": 0,
+      "height": "19.65424",
+      "type": "rectangle",
+      "width": "19.65424",
+      "x": "180.26203",
+      "y": "240.15984",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > width entry > curved line > roughness 1 > matches the existing group transformation at angle 0.73 1`] = `
+{
+  "bounds": [
+    "97.78428",
+    "131.79251",
+    "273.74222",
+    "312.29969",
+  ],
+  "members": [
+    {
+      "angle": "0.73000",
+      "endArrowhead": null,
+      "height": "153.24013",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-170.26681",
+          "-51.08004",
+        ],
+        [
+          "-85.13341",
+          "102.16009",
+        ],
+        [
+          "34.05336",
+          "-17.02668",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "line",
+      "width": "204.32018",
+      "x": "238.29431",
+      "y": "230.57809",
+    },
+    {
+      "angle": 0,
+      "height": "17.02668",
+      "type": "rectangle",
+      "width": "17.02668",
+      "x": "153.16090",
+      "y": "247.60477",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > width entry > curved line > roughness 2 > matches the existing group transformation at angle 0 1`] = `
+{
+  "bounds": [
+    "78.78121",
+    "158.23423",
+    "318.39549",
+    "338.95391",
+  ],
+  "members": [
+    {
+      "angle": 0,
+      "endArrowhead": null,
+      "height": "177.71371",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-197.45968",
+          "-59.23790",
+        ],
+        [
+          "-98.72984",
+          "118.47581",
+        ],
+        [
+          "39.49194",
+          "-19.74597",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "line",
+      "width": "236.95161",
+      "x": "280.65866",
+      "y": "220.56173",
+    },
+    {
+      "angle": 0,
+      "height": "19.74597",
+      "type": "rectangle",
+      "width": "19.74597",
+      "x": "181.92883",
+      "y": "240.30769",
+    },
+  ],
+}
+`;
+
+exports[`locked group planner compatibility with current Stats resizing > width entry > curved line > roughness 2 > matches the existing group transformation at angle 0.73 1`] = `
+{
+  "bounds": [
+    "97.40439",
+    "132.02997",
+    "276.72292",
+    "313.22909",
+  ],
+  "members": [
+    {
+      "angle": "0.73000",
+      "endArrowhead": null,
+      "height": "154.63781",
+      "points": [
+        [
+          0,
+          0,
+        ],
+        [
+          "-171.81979",
+          "-51.54594",
+        ],
+        [
+          "-85.90990",
+          "103.09187",
+        ],
+        [
+          "34.36396",
+          "-17.18198",
+        ],
+      ],
+      "startArrowhead": null,
+      "type": "line",
+      "width": "206.18375",
+      "x": "240.63340",
+      "y": "230.84407",
+    },
+    {
+      "angle": 0,
+      "height": "17.18198",
+      "type": "rectangle",
+      "width": "17.18198",
+      "x": "154.72351",
+      "y": "248.02605",
+    },
+  ],
+}
+`;
