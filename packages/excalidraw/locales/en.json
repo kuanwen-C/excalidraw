@@ -199,7 +199,9 @@
     "midpointSnapping": "Snap to midpoints",
     "inputDevice": "Input",
     "inputDeviceTrackpad": "Trackpad",
-    "inputDeviceMouse": "Mouse"
+    "inputDeviceMouse": "Mouse",
+    "setAlignReference": "Set as alignment reference",
+    "clearAlignReference": "Clear alignment reference"
   },
   "elementLink": {
     "title": "Link to object",

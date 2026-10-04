@@ -137,6 +137,7 @@ describe("contextMenu element", () => {
       "hyperlink",
       "copyElementLink",
       "toggleElementLock",
+      "setAlignReference",
     ];
 
     expect(contextMenu).not.toBeNull();
@@ -288,6 +289,7 @@ describe("contextMenu element", () => {
       "bringToFront",
       "duplicateSelection",
       "toggleElementLock",
+      "setAlignReference",
     ];
 
     expect(contextMenu).not.toBeNull();
