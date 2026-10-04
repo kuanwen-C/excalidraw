@@ -14,12 +14,15 @@ import { KEYS, randomInteger, addEventListener } from "@excalidraw/common";
 import { newTextElement } from "@excalidraw/element";
 import { isTextElement, isFrameLikeElement } from "@excalidraw/element";
 
+import { getDefaultFrameName } from "@excalidraw/element/frame";
+
 import { atom, useAtom } from "../editor-jotai";
 
 import { useStable } from "../hooks/useStable";
 import { t } from "../i18n";
+import { searchDrawing } from "../search";
 
-import { useApp, useExcalidrawSetAppState } from "./App";
+import { useApp, useExcalidrawAppState, useExcalidrawSetAppState } from "./App";
 import { Button } from "./Button";
 import { TextField } from "./TextField";
 import {
@@ -32,10 +35,12 @@ import {
 
 import "./SearchMenu.scss";
 
-import { searchDrawing } from "../search";
-
-import type { SearchMatchItem, SearchMatches, SearchQuery } from "../search";
-import type { AppClassProperties } from "../types";
+import type {
+  SearchMatchItem,
+  SearchMatches,
+  SearchQuery,
+  SearchScope,
+} from "../search";
 
 const searchQueryAtom = atom<string>("");
 export const searchItemInFocusAtom = atom<number | null>(null);
@@ -45,6 +50,9 @@ const SEARCH_DEBOUNCE = 350;
 export const SearchMenu = () => {
   const app = useApp();
   const setAppState = useExcalidrawSetAppState();
+  const { selectedElementIds, zoom } = useExcalidrawAppState();
+  const [scope, setScope] = useState<SearchScope>({ type: "all" });
+  const [matchCase, setMatchCase] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -57,50 +65,80 @@ export const SearchMenu = () => {
     nonce: null,
     items: [],
   });
-  const searchedQueryRef = useRef<SearchQuery | null>(null);
-  const lastSceneNonceRef = useRef<number | undefined>(undefined);
-
   const [focusIndex, setFocusIndex] = useAtom(searchItemInFocusAtom);
-  const elementsMap = app.scene.getNonDeletedElementsMap();
+  const stableSearchState = useStable({ searchMatches, focusIndex });
+  const sceneNonce = app.scene.getSceneNonce();
+  const frames = app.scene
+    .getNonDeletedFramesLikes()
+    .filter((frame) => !frame.isDeleted);
+  const selection = scope.type === "selection" ? selectedElementIds : undefined;
+  const lastNavigatedMatchRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (isSearching) {
-      return;
+    let cancelled = false;
+    const runSearch = () => {
+      if (cancelled) {
+        return;
+      }
+      const items = searchDrawing(
+        app.scene.getNonDeletedElements(),
+        searchQuery,
+        zoom.value,
+        { scope, selectedElementIds: selection, matchCase },
+      );
+      const previousMatch =
+        stableSearchState.focusIndex === null
+          ? null
+          : stableSearchState.searchMatches.items[stableSearchState.focusIndex];
+      const preservedIndex = previousMatch
+        ? items.findIndex(
+            (match) =>
+              match.element.id === previousMatch.element.id &&
+              match.index === previousMatch.index &&
+              match.matchedText === previousMatch.matchedText,
+          )
+        : -1;
+      const visibleIds = new Set(
+        app.visibleElements.map((element) => element.id),
+      );
+      const visibleIndex = items.findIndex((match) =>
+        visibleIds.has(match.element.id),
+      );
+      setSearchMatches({ nonce: randomInteger(), items });
+      setFocusIndex(
+        preservedIndex >= 0
+          ? preservedIndex
+          : visibleIndex >= 0
+          ? visibleIndex
+          : items.length
+          ? 0
+          : null,
+      );
+      setIsSearching(false);
+    };
+
+    // Each menu owns its pending work. Changes and unmount cancel the old request.
+    const pendingSearch = debounce(runSearch, SEARCH_DEBOUNCE);
+    setIsSearching(true);
+    if (searchQuery) {
+      pendingSearch();
+    } else {
+      runSearch();
     }
-    if (
-      searchQuery !== searchedQueryRef.current ||
-      app.scene.getSceneNonce() !== lastSceneNonceRef.current
-    ) {
-      searchedQueryRef.current = null;
-      handleSearch(searchQuery, app, (matchItems, index) => {
-        setSearchMatches({
-          nonce: randomInteger(),
-          items: matchItems,
-        });
-        searchedQueryRef.current = searchQuery;
-        lastSceneNonceRef.current = app.scene.getSceneNonce();
-        setAppState({
-          searchMatches: matchItems.length
-            ? {
-                focusedId: null,
-                matches: matchItems.map((searchMatch) => ({
-                  id: searchMatch.element.id,
-                  focus: false,
-                  matchedLines: searchMatch.matchedLines,
-                })),
-              }
-            : null,
-        });
-      });
-    }
+    return () => {
+      cancelled = true;
+      pendingSearch.cancel();
+    };
   }, [
-    isSearching,
     searchQuery,
-    elementsMap,
+    scope,
+    matchCase,
+    selection,
+    sceneNonce,
+    zoom.value,
     app,
-    setAppState,
     setFocusIndex,
-    lastSceneNonceRef,
+    stableSearchState,
   ]);
 
   const goToNextItem = () => {
@@ -130,39 +168,43 @@ export const SearchMenu = () => {
   };
 
   useEffect(() => {
-    setAppState((state) => {
-      if (!state.searchMatches) {
-        return null;
-      }
-
-      const focusedId =
-        focusIndex !== null
-          ? state.searchMatches?.matches[focusIndex]?.id || null
-          : null;
-
-      return {
-        searchMatches: {
-          focusedId,
-          matches: state.searchMatches.matches.map((match, index) => {
-            if (index === focusIndex) {
-              return { ...match, focus: true };
-            }
-            return { ...match, focus: false };
-          }),
-        },
-      };
+    const focusedId =
+      focusIndex === null
+        ? null
+        : searchMatches.items[focusIndex]?.element.id ?? null;
+    setAppState({
+      searchMatches: searchMatches.items.length
+        ? {
+            focusedId,
+            matches: searchMatches.items.map((match, index) => ({
+              id: match.element.id,
+              focus: index === focusIndex,
+              matchedLines: match.matchedLines,
+            })),
+          }
+        : null,
     });
-  }, [focusIndex, setAppState]);
+  }, [searchMatches, focusIndex, setAppState]);
 
   useEffect(() => {
     if (searchMatches.items.length > 0 && focusIndex !== null) {
       const match = searchMatches.items[focusIndex];
 
       if (match) {
+        const matchKey = JSON.stringify([
+          match.element.id,
+          match.index,
+          match.matchedText,
+        ]);
+        // Geometry refreshes must not undo a user's manual pan or zoom.
+        if (lastNavigatedMatchRef.current === matchKey) {
+          return;
+        }
+        lastNavigatedMatchRef.current = matchKey;
         const zoomValue = app.state.zoom.value;
 
         const matchAsElement = newTextElement({
-          text: match.searchQuery,
+          text: match.matchedText,
           x: match.element.x + (match.matchedLines[0]?.offsetX ?? 0),
           y: match.element.y + (match.matchedLines[0]?.offsetY ?? 0),
           width: match.matchedLines[0]?.width,
@@ -213,18 +255,17 @@ export const SearchMenu = () => {
           });
         }
       }
+    } else {
+      lastNavigatedMatchRef.current = null;
     }
   }, [focusIndex, searchMatches, app]);
 
   useEffect(() => {
     return () => {
       setFocusIndex(null);
-      searchedQueryRef.current = null;
-      lastSceneNonceRef.current = undefined;
       setAppState({
         searchMatches: null,
       });
-      setIsSearching(false);
     };
   }, [setAppState, setFocusIndex]);
 
@@ -271,7 +312,8 @@ export const SearchMenu = () => {
 
       if (
         target instanceof app.ownerWindow.HTMLElement &&
-        target.closest(".layer-ui__search")
+        (target === searchInputRef.current ||
+          target.closest(".layer-ui__result-item"))
       ) {
         if (stableState.searchMatches.items.length) {
           if (event.key === KEYS.ENTER) {
@@ -305,7 +347,7 @@ export const SearchMenu = () => {
   }`;
 
   return (
-    <div className="layer-ui__search">
+    <div className="layer-ui__search" aria-busy={isSearching}>
       <div className="layer-ui__search-header">
         <TextField
           className={CLASSES.SEARCH_MENU_INPUT_WRAPPER}
@@ -313,36 +355,69 @@ export const SearchMenu = () => {
           ref={searchInputRef}
           placeholder={t("search.placeholder")}
           icon={searchIcon}
-          onChange={(value) => {
-            setInputValue(value);
-            setIsSearching(true);
-            const searchQuery = value.trim() as SearchQuery;
-            handleSearch(searchQuery, app, (matchItems, index) => {
-              setSearchMatches({
-                nonce: randomInteger(),
-                items: matchItems,
-              });
-              setFocusIndex(index);
-              searchedQueryRef.current = searchQuery;
-              lastSceneNonceRef.current = app.scene.getSceneNonce();
-              setAppState({
-                searchMatches: matchItems.length
-                  ? {
-                      focusedId: null,
-                      matches: matchItems.map((searchMatch) => ({
-                        id: searchMatch.element.id,
-                        focus: false,
-                        matchedLines: searchMatch.matchedLines,
-                      })),
-                    }
-                  : null,
-              });
-
-              setIsSearching(false);
-            });
-          }}
+          onChange={setInputValue}
           selectOnRender
         />
+      </div>
+
+      <div className="layer-ui__search-options">
+        <label>
+          {t("search.scope")}
+          <select
+            aria-label={t("search.scope")}
+            value={scope.type}
+            onChange={(event) => {
+              const type = event.target.value;
+              setScope(
+                type === "frame"
+                  ? { type, frameId: null }
+                  : { type: type === "selection" ? "selection" : "all" },
+              );
+            }}
+          >
+            <option value="all">{t("search.wholeDrawing")}</option>
+            <option value="selection">{t("search.currentSelection")}</option>
+            <option value="frame">{t("search.chosenFrame")}</option>
+          </select>
+        </label>
+        {scope.type === "frame" && (
+          <label>
+            {t("search.chosenFrame")}
+            <select
+              aria-label={t("search.chosenFrame")}
+              value={scope.frameId ?? ""}
+              onChange={(event) =>
+                setScope({ type: "frame", frameId: event.target.value || null })
+              }
+            >
+              <option value="">{t("search.chooseFrame")}</option>
+              {scope.frameId &&
+                !frames.some((frame) => frame.id === scope.frameId) && (
+                  <option value={scope.frameId}>
+                    {t("search.frameUnavailable")}
+                  </option>
+                )}
+              {frames.map((frame) => (
+                <option key={frame.id} value={frame.id}>
+                  {frame.name ?? getDefaultFrameName(frame)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {scope.type === "selection" && (
+          <div className="layer-ui__search-hint">
+            {t("search.liveSelectionHint")}
+          </div>
+        )}
+        <label className="layer-ui__search-match-case">
+          <input
+            type="checkbox"
+            checked={matchCase}
+            onChange={(event) => setMatchCase(event.target.checked)}
+          />
+          {t("search.matchCase")}
+        </label>
       </div>
 
       <div className="layer-ui__search-count">
@@ -360,6 +435,7 @@ export const SearchMenu = () => {
                 onSelect={() => {
                   goToNextItem();
                 }}
+                aria-label={t("search.nextMatch")}
                 className="result-nav-btn"
               >
                 {collapseDownIcon}
@@ -368,6 +444,7 @@ export const SearchMenu = () => {
                 onSelect={() => {
                   goToPreviousItem();
                 }}
+                aria-label={t("search.previousMatch")}
                 className="result-nav-btn"
               >
                 {upIcon}
@@ -376,18 +453,15 @@ export const SearchMenu = () => {
           </>
         )}
 
-        {searchMatches.items.length === 0 &&
-          searchQuery &&
-          searchedQueryRef.current && (
-            <div style={{ margin: "1rem auto" }}>{t("search.noMatch")}</div>
-          )}
+        {searchMatches.items.length === 0 && searchQuery && !isSearching && (
+          <div style={{ margin: "1rem auto" }}>{t("search.noMatch")}</div>
+        )}
       </div>
 
       <MatchList
         matches={searchMatches}
         onItemClick={setFocusIndex}
         focusIndex={focusIndex}
-        searchQuery={searchQuery}
       />
     </div>
   );
@@ -438,7 +512,6 @@ interface MatchListProps {
   matches: SearchMatches;
   onItemClick: (index: number) => void;
   focusIndex: number | null;
-  searchQuery: SearchQuery;
 }
 
 const MatchListBase = (props: MatchListProps) => {
@@ -464,7 +537,7 @@ const MatchListBase = (props: MatchListProps) => {
           {frameNameMatches.map((searchMatch, index) => (
             <ListItem
               key={searchMatch.element.id + searchMatch.index}
-              searchQuery={props.searchQuery}
+              searchQuery={searchMatch.searchQuery}
               preview={searchMatch.preview}
               highlighted={index === props.focusIndex}
               onClick={() => props.onItemClick(index)}
@@ -484,7 +557,7 @@ const MatchListBase = (props: MatchListProps) => {
           {textMatches.map((searchMatch, index) => (
             <ListItem
               key={searchMatch.element.id + searchMatch.index}
-              searchQuery={props.searchQuery}
+              searchQuery={searchMatch.searchQuery}
               preview={searchMatch.preview}
               highlighted={index + frameNameMatches.length === props.focusIndex}
               onClick={() => props.onItemClick(index + frameNameMatches.length)}
@@ -504,25 +577,3 @@ const areEqual = (prevProps: MatchListProps, nextProps: MatchListProps) => {
 };
 
 const MatchList = memo(MatchListBase, areEqual);
-
-const handleSearch = debounce(
-  (
-    searchQuery: SearchQuery,
-    app: AppClassProperties,
-    cb: (matchItems: SearchMatchItem[], focusIndex: number | null) => void,
-  ) => {
-    const matchItems = searchDrawing(
-      app.scene.getNonDeletedElements(),
-      searchQuery,
-      app.state.zoom.value,
-    );
-    const visibleIds = new Set(
-      app.visibleElements.map((element) => element.id),
-    );
-    const index = matchItems.findIndex((match) =>
-      visibleIds.has(match.element.id),
-    );
-    cb(matchItems, index < 0 ? null : index);
-  },
-  SEARCH_DEBOUNCE,
-);
