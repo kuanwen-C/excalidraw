@@ -4410,6 +4410,15 @@ class App extends React.Component<AppProps, AppState> {
       }
     }
 
+    // the align reference only lives while its element stays selected, so a
+    // later selection that happens to include it again can't reuse it
+    if (
+      this.state.alignReferenceElementId &&
+      !this.state.selectedElementIds[this.state.alignReferenceElementId]
+    ) {
+      this.setState({ alignReferenceElementId: null });
+    }
+
     // failsafe in case the state is being updated in incorrect order resulting
     // in the editingTextElement being now a deleted element. Resolved against
     // the scene by id, since the state holds an immutable snapshot whose

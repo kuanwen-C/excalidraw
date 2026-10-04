@@ -1,4 +1,6 @@
-import { KEYS } from "@excalidraw/common";
+import { KEYS, arrayToMap } from "@excalidraw/common";
+
+import { getAlignReferenceElement } from "@excalidraw/element";
 
 import {
   actionAlignVerticallyCentered,
@@ -19,6 +21,8 @@ import {
   unmountComponent,
   render,
 } from "@excalidraw/excalidraw/tests/test-utils";
+
+const { h } = window;
 
 const mouse = new Pointer("mouse");
 
@@ -1093,5 +1097,86 @@ describe("aligning", () => {
 
     expect(API.getElement(boundText).x).toEqual(20);
     expect(API.getElement(boundText).y).toEqual(140);
+  });
+});
+
+describe("getAlignReferenceElement", () => {
+  const rectangle = API.createElement({ type: "rectangle", id: "rect" });
+  const deletedRectangle = API.createElement({
+    type: "rectangle",
+    id: "deleted-rect",
+    isDeleted: true,
+  });
+  const frame = API.createElement({ type: "frame", id: "frame" });
+  const magicFrame = API.createElement({ type: "magicframe", id: "magic" });
+  const elementsMap = arrayToMap([
+    rectangle,
+    deletedRectangle,
+    frame,
+    magicFrame,
+  ]);
+
+  const resolve = (
+    alignReferenceElementId: string | null,
+    selectedIds: string[],
+  ) =>
+    getAlignReferenceElement(
+      {
+        alignReferenceElementId,
+        selectedElementIds: Object.fromEntries(
+          selectedIds.map((id) => [id, true as const]),
+        ),
+      },
+      elementsMap,
+    );
+
+  it("returns the element when it is set, selected and not frame-like", () => {
+    expect(resolve(rectangle.id, [rectangle.id])).toBe(rectangle);
+  });
+
+  it("returns null when no reference is set", () => {
+    expect(resolve(null, [rectangle.id])).toBe(null);
+  });
+
+  it("returns null when the reference is no longer selected", () => {
+    expect(resolve(rectangle.id, [])).toBe(null);
+  });
+
+  it("returns null when the reference is deleted or missing", () => {
+    expect(resolve(deletedRectangle.id, [deletedRectangle.id])).toBe(null);
+    expect(resolve("missing", ["missing"])).toBe(null);
+  });
+
+  it("returns null when the reference is frame-like", () => {
+    expect(resolve(frame.id, [frame.id])).toBe(null);
+    expect(resolve(magicFrame.id, [magicFrame.id])).toBe(null);
+  });
+});
+
+describe("align reference lifetime", () => {
+  beforeEach(async () => {
+    unmountComponent();
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+  });
+
+  it("clears the reference once its element leaves the selection", () => {
+    const rectA = API.createElement({ type: "rectangle", id: "A" });
+    const rectB = API.createElement({ type: "rectangle", id: "B", x: 200 });
+    API.setElements([rectA, rectB]);
+    API.setSelectedElements([rectA, rectB]);
+    act(() => {
+      API.setAppState({ alignReferenceElementId: rectA.id });
+    });
+    expect(h.state.alignReferenceElementId).toBe(rectA.id);
+
+    // still selected alongside others: kept
+    API.setSelectedElements([rectA]);
+    expect(h.state.alignReferenceElementId).toBe(rectA.id);
+
+    // deselected: cleared, and reselecting doesn't bring it back
+    API.setSelectedElements([rectB]);
+    expect(h.state.alignReferenceElementId).toBe(null);
+    API.setSelectedElements([rectA, rectB]);
+    expect(h.state.alignReferenceElementId).toBe(null);
   });
 });
