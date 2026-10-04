@@ -334,6 +334,8 @@ import {
   actionToggleArrowBinding,
   actionToggleMidpointSnapping,
   actionToggleCropEditor,
+  actionSetAlignReference,
+  actionClearAlignReference,
 } from "../actions";
 import { actionWrapTextInContainer } from "../actions/actionBoundText";
 import { actionPaste } from "../actions/actionClipboard";
@@ -4408,6 +4410,15 @@ class App extends React.Component<AppProps, AppState> {
           };
         });
       }
+    }
+
+    // the align reference only lives while its element stays selected, so a
+    // later selection that happens to include it again can't reuse it
+    if (
+      this.state.alignReferenceElementId &&
+      !this.state.selectedElementIds[this.state.alignReferenceElementId]
+    ) {
+      this.setState({ alignReferenceElementId: null });
     }
 
     // failsafe in case the state is being updated in incorrect order resulting
@@ -13960,6 +13971,9 @@ class App extends React.Component<AppProps, AppState> {
       CONTEXT_MENU_SEPARATOR,
       actionFlipHorizontal,
       actionFlipVertical,
+      CONTEXT_MENU_SEPARATOR,
+      actionSetAlignReference,
+      actionClearAlignReference,
       CONTEXT_MENU_SEPARATOR,
       actionToggleLinearEditor,
       CONTEXT_MENU_SEPARATOR,

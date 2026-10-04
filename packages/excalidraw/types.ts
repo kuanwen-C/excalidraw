@@ -254,6 +254,7 @@ export type InteractiveCanvasAppState = Readonly<
     shouldCacheIgnoreZoom: AppState["shouldCacheIgnoreZoom"];
     exportScale: AppState["exportScale"];
     currentItemArrowType: AppState["currentItemArrowType"];
+    alignReferenceElementId: AppState["alignReferenceElementId"];
   }
 >;
 
@@ -567,6 +568,10 @@ export interface AppState {
     stickyNoteStroke: readonly string[] | null;
     stickyNoteBackground: readonly string[] | null;
   };
+  /** element the align actions align to instead of the selection box. A UI
+   * pointer, not scene data: only honored while it is selected (see
+   * `getAlignReferenceElement`) and cleared once it leaves the selection. */
+  alignReferenceElementId: ExcalidrawElement["id"] | null;
 }
 
 export type SearchMatch = {

@@ -6,7 +6,7 @@ import { updateFrameMembershipOfSelectedElements } from "@excalidraw/element";
 
 import { KEYS, arrayToMap } from "@excalidraw/common";
 
-import { alignElements } from "@excalidraw/element";
+import { alignElements, getAlignReferenceBounds } from "@excalidraw/element";
 
 import { CaptureUpdateAction } from "@excalidraw/element";
 
@@ -65,6 +65,11 @@ const alignSelectedElements = (
     alignment,
     app.scene,
     appState,
+    getAlignReferenceBounds(
+      selectedElements,
+      appState,
+      app.scene.getNonDeletedElementsMap(),
+    ),
   );
 
   const updatedElementsMap = arrayToMap(updatedElements);
