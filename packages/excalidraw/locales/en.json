@@ -224,7 +224,17 @@
     "multipleResults": "results",
     "placeholder": "Find text on canvas...",
     "frames": "Frames",
-    "texts": "Texts"
+    "texts": "Texts",
+    "scope": "Search scope",
+    "wholeDrawing": "Whole drawing",
+    "currentSelection": "Current selection",
+    "chosenFrame": "Chosen frame",
+    "chooseFrame": "Choose a frame…",
+    "frameUnavailable": "Frame no longer available",
+    "liveSelectionHint": "Follows your current selection. Selected frames include only their names.",
+    "matchCase": "Match case",
+    "nextMatch": "Next match",
+    "previousMatch": "Previous match"
   },
   "buttons": {
     "clearReset": "Reset the canvas",
