@@ -15,6 +15,7 @@ import type {
 
 import type { Scene } from "@excalidraw/element";
 
+import { t } from "../../i18n";
 import { useApp, useExcalidrawSetAppState } from "../App";
 import { InlineIcon } from "../InlineIcon";
 
@@ -39,7 +40,7 @@ export type DragInputCallbackType<
   nextValue?: number;
   property: P;
   originalAppState: AppState;
-  setInputValue: (value: number) => void;
+  setInputValue: (value: number | "Mixed") => void;
   app: ReturnType<typeof useApp>;
   setAppState: ReturnType<typeof useExcalidrawSetAppState>;
 }) => void;
@@ -133,6 +134,9 @@ const StatsDragInput = <
     // don't survive the JSON round-trip on save)
     if (!Number.isFinite(parsed)) {
       setInputValue(value.toString());
+      if (property === "width" || property === "height") {
+        setAppState({ toast: { message: t("stats.resizeInvalidGeometry") } });
+      }
       return;
     }
 

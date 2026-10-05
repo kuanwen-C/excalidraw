@@ -1,11 +1,15 @@
 import { degreesToRadians, pointFrom, pointRotateRads } from "@excalidraw/math";
-import { act, fireEvent, queryByTestId } from "@testing-library/react";
+import { act, fireEvent, queryByTestId, within } from "@testing-library/react";
 import React from "react";
 import { vi } from "vitest";
 
 import { setDateTimeForTests, reseed } from "@excalidraw/common";
 
-import { isInGroup } from "@excalidraw/element";
+import {
+  CaptureUpdateAction,
+  handleBindTextResize,
+  isInGroup,
+} from "@excalidraw/element";
 
 import { isTextElement } from "@excalidraw/element";
 
@@ -39,6 +43,33 @@ const mouse = new Pointer("mouse");
 const renderStaticScene = vi.spyOn(StaticScene, "renderStaticScene");
 let stats: HTMLElement | null = null;
 let elementStats: HTMLElement | null | undefined = null;
+
+const getAspectRatioLock = () =>
+  within(UI.queryStats()!).getByRole("button", {
+    name: t("stats.keepProportions"),
+  });
+
+const getDimensionInput = (property: "width" | "height") =>
+  UI.queryStatsProperty(property === "width" ? "W" : "H")!.querySelector(
+    "input",
+  )!;
+
+const dragDimension = (
+  property: "width" | "height",
+  movements: number[],
+  shiftKey = false,
+) => {
+  const label = UI.queryStatsProperty(
+    property === "width" ? "W" : "H",
+  )!.querySelector(".drag-input-label")!;
+  const ownerWindow = h.app.ownerWindow;
+  fireEvent.pointerDown(label, { clientX: 0 });
+  fireEvent.pointerMove(ownerWindow, { clientX: 0 });
+  movements.forEach((clientX) => {
+    fireEvent.pointerMove(ownerWindow, { clientX, shiftKey });
+  });
+  fireEvent.pointerUp(ownerWindow);
+};
 
 const testInputProperty = (
   element: ExcalidrawElement,
@@ -460,6 +491,8 @@ describe("stats for a non-generic element", () => {
     expect(elementStats).toBeDefined();
     const widthToHeight = image.width / image.height;
 
+    fireEvent.click(getAspectRatioLock());
+
     // when width or height is changed, the aspect ratio is preserved
     testInputProperty(image, "width", "W", image.width, 400);
     expect(image.width).toBe(400);
@@ -497,6 +530,613 @@ describe("stats for a non-generic element", () => {
     UI.updateInput(fontSize, "40");
 
     expect(text.fontSize).toBe(40);
+  });
+});
+
+describe("Stats aspect-ratio lock for single elements", () => {
+  beforeEach(async () => {
+    localStorage.clear();
+    renderStaticScene.mockClear();
+    reseed(7);
+    setDateTimeForTests("201933152653");
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    API.setElements([]);
+    API.setAppState({ stats: { ...h.state.stats, open: true } });
+  });
+
+  beforeAll(() => mockBoundingClientRect());
+  afterAll(() => restoreOriginalGetBoundingClientRect());
+
+  const selectElement = (type: "rectangle" | "image" = "rectangle") => {
+    const element = API.createElement({ type, width: 100, height: 50 });
+    API.setElements([element]);
+    API.setSelectedElements([element]);
+    act(() => {
+      h.app.syncActionResult({
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+    });
+    return element;
+  };
+
+  describe.each(["rectangle", "image"] as const)("%s", (type) => {
+    it.each([
+      ["width", false, 123.12, 50],
+      ["height", false, 100, 123.12],
+      ["width", true, 123.12, 61.56],
+      ["height", true, 246.24, 123.12],
+    ] as const)(
+      "types %s with lock=%s, retaining decimal precision",
+      (property, locked, width, height) => {
+        const element = selectElement(type);
+        expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "false");
+        if (locked) {
+          fireEvent.click(getAspectRatioLock());
+        }
+        UI.updateInput(getDimensionInput(property), "123.12");
+        expect(element.width).toBeCloseTo(width, 8);
+        expect(element.height).toBeCloseTo(height, 8);
+      },
+    );
+
+    it.each([
+      ["width", false, 1, 50],
+      ["height", false, 100, 1],
+      ["width", true, 2, 1],
+      ["height", true, 2, 1],
+    ] as const)(
+      "clamps %s with lock=%s without breaking a locked ratio",
+      (property, locked, width, height) => {
+        const element = selectElement(type);
+        if (locked) {
+          fireEvent.click(getAspectRatioLock());
+        }
+        UI.updateInput(getDimensionInput(property), "1");
+        expect(element.width).toBe(width);
+        expect(element.height).toBe(height);
+      },
+    );
+
+    it.each([
+      ["width", false, false, 116, 50.125],
+      ["height", false, false, 100.25, 66],
+      ["width", true, false, 116, 58],
+      ["height", true, false, 132, 66],
+      ["width", false, true, 120, 50.125],
+      ["height", false, true, 100.25, 70],
+      ["width", true, true, 120, 60],
+      ["height", true, true, 140, 70],
+    ] as const)(
+      "drags %s with lock=%s and Shift=%s from the original snapshot",
+      (property, locked, shiftKey, width, height) => {
+        const element = selectElement(type);
+        API.updateElement(element, { width: 100.25, height: 50.125 });
+        if (locked) {
+          fireEvent.click(getAspectRatioLock());
+        }
+        dragDimension(property, [7, 16], shiftKey);
+        expect(element.width).toBeCloseTo(width, 8);
+        expect(element.height).toBeCloseTo(height, 8);
+      },
+    );
+  });
+
+  it("clamps a locked drag and can grow again from the original snapshot", () => {
+    const element = selectElement();
+    fireEvent.click(getAspectRatioLock());
+    dragDimension("width", [-99]);
+    expect(element.width).toBe(2);
+    expect(element.height).toBe(1);
+    dragDimension("width", [10, 20]);
+    expect(element.width).toBe(22);
+    expect(element.height).toBe(11);
+  });
+
+  it("toggles without mutating elements or adding drawing history", () => {
+    selectElement();
+    const elementsBefore = JSON.parse(JSON.stringify(h.elements));
+    const undoBefore = [...API.getUndoStack()];
+    const redoBefore = [...API.getRedoStack()];
+    fireEvent.click(getAspectRatioLock());
+    expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "true");
+    expect(h.elements).toEqual(elementsBefore);
+    fireEvent.click(getAspectRatioLock());
+    expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "false");
+    expect(h.elements).toEqual(elementsBefore);
+    expect(API.getUndoStack()).toEqual(undoBefore);
+    expect(API.getRedoStack()).toEqual(redoBefore);
+  });
+
+  it("retains its preference across deselection and multiple selections", () => {
+    const rectangle = selectElement();
+    const image = API.createElement({ type: "image", width: 200, height: 50 });
+    API.setElements([rectangle, image]);
+    fireEvent.click(getAspectRatioLock());
+
+    API.setSelectedElements([]);
+    expect(
+      within(UI.queryStats()!).queryByRole("button", {
+        name: t("stats.keepProportions"),
+      }),
+    ).toBeNull();
+    API.setSelectedElements([rectangle, image]);
+    expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "true");
+    UI.updateInput(getDimensionInput("width"), "300");
+    expect(rectangle.height).toBe(150);
+    expect(image.height).toBe(75);
+
+    API.setSelectedElements([image]);
+    expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "true");
+    UI.updateInput(getDimensionInput("width"), "600");
+    expect(image.height).toBe(150);
+  });
+
+  it("keeps standalone text unlocked without losing the preference", () => {
+    const rectangle = selectElement();
+    const text = API.createElement({
+      type: "text",
+      text: "A long line of text that must wrap when narrowed",
+      width: 300,
+      height: 25,
+      fontSize: 20,
+    });
+    API.setElements([rectangle, text]);
+    fireEvent.click(getAspectRatioLock());
+    API.setSelectedElements([text]);
+    expect(
+      within(UI.queryStats()!).queryByRole("button", {
+        name: t("stats.keepProportions"),
+      }),
+    ).toBeNull();
+    UI.updateInput(getDimensionInput("width"), "60");
+    expect(text.fontSize).toBe(20);
+    expect(text.text).toContain("\n");
+    expect(text.height).toBeGreaterThan(25);
+    API.setSelectedElements([rectangle]);
+    expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("leaves cropping independent and retains the lock on exiting crop mode", () => {
+    const image = API.createElement({
+      type: "image",
+      width: 100,
+      height: 50,
+    });
+    API.setElements([image]);
+    API.updateElement(image, {
+      crop: {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 50,
+        naturalWidth: 200,
+        naturalHeight: 100,
+      },
+    });
+    API.setSelectedElements([image]);
+    fireEvent.click(getAspectRatioLock());
+    API.setAppState({ croppingElementId: image.id });
+    expect(
+      within(UI.queryStats()!).queryByRole("button", {
+        name: t("stats.keepProportions"),
+      }),
+    ).toBeNull();
+    UI.updateInput(getDimensionInput("width"), "80");
+    expect(image.width).toBe(80);
+    expect(image.height).toBe(50);
+    UI.updateInput(getDimensionInput("height"), "40");
+    expect(image.width).toBe(80);
+    expect(image.height).toBe(40);
+    API.setAppState({ croppingElementId: null });
+    expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it.each(["close", "zen"] as const)(
+    "resets after unmounting via %s",
+    (mode) => {
+      selectElement();
+      fireEvent.click(getAspectRatioLock());
+      if (mode === "close") {
+        fireEvent.click(UI.queryStats()!.querySelector(".close")!);
+        expect(UI.queryStats()).toBeNull();
+        API.setAppState({ stats: { ...h.state.stats, open: true } });
+      } else {
+        API.setAppState({ zenModeEnabled: true });
+        expect(UI.queryStats()).toBeNull();
+        API.setAppState({ zenModeEnabled: false });
+      }
+      expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "false");
+    },
+  );
+
+  it("restores the resulting width after a clamped no-op without adding history", () => {
+    const rectangle = selectElement();
+    fireEvent.click(getAspectRatioLock());
+    const widthInput = getDimensionInput("width");
+    UI.updateInput(widthInput, "2");
+    expect(rectangle.width).toBe(2);
+    expect(rectangle.height).toBe(1);
+    const elementsBefore = JSON.parse(JSON.stringify(h.elements));
+    const undoBefore = [...API.getUndoStack()];
+
+    UI.updateInput(widthInput, "1");
+
+    expect(rectangle.width).toBe(2);
+    expect(rectangle.height).toBe(1);
+    expect(widthInput.value).toBe("2");
+    expect(h.elements).toEqual(elementsBefore);
+    expect(API.getUndoStack()).toEqual(undoBefore);
+  });
+
+  it("restores the current height after a rejected calculation without adding history", () => {
+    selectElement();
+    fireEvent.click(getAspectRatioLock());
+    const elementsBefore = JSON.parse(JSON.stringify(h.elements));
+    const undoBefore = [...API.getUndoStack()];
+    const heightInput = getDimensionInput("height");
+    // Finite input whose proportional width would overflow.
+    UI.updateInput(heightInput, "1e308");
+    expect(h.elements).toEqual(elementsBefore);
+    expect(heightInput.value).toBe("50");
+    expect(API.getUndoStack()).toEqual(undoBefore);
+  });
+});
+
+describe("Stats aspect-ratio lock for ungrouped multiple selections", () => {
+  beforeEach(async () => {
+    localStorage.clear();
+    renderStaticScene.mockClear();
+    reseed(7);
+    setDateTimeForTests("201933152653");
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    API.setElements([]);
+    API.setAppState({ stats: { ...h.state.stats, open: true } });
+  });
+
+  beforeAll(() => mockBoundingClientRect());
+  afterAll(() => restoreOriginalGetBoundingClientRect());
+
+  const captureSetup = () => {
+    act(() => {
+      h.app.syncActionResult({
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+    });
+  };
+
+  const selectPair = () => {
+    const first = API.createElement({
+      type: "rectangle",
+      width: 100,
+      height: 50,
+    });
+    const second = API.createElement({
+      type: "image",
+      x: 300,
+      width: 60,
+      height: 120,
+      fileId: "stats-resize-image",
+    });
+    const unrelated = API.createElement({
+      type: "ellipse",
+      x: 1000,
+      width: 81,
+      height: 43,
+    });
+    API.setElements([first, second, unrelated]);
+    API.setSelectedElements([first, second]);
+    captureSetup();
+    return { first, second, unrelated };
+  };
+
+  const geometry = () =>
+    h.elements.map(({ id, x, y, width, height }) => ({
+      id,
+      x,
+      y,
+      width,
+      height,
+    }));
+
+  it.each([
+    ["width", false, 123.12, 50, 123.12, 120],
+    ["height", false, 100, 123.12, 60, 123.12],
+    ["width", true, 123.12, 61.56, 123.12, 246.24],
+    ["height", true, 246.24, 123.12, 61.56, 123.12],
+  ] as const)(
+    "types decimal %s with lock=%s and undoes/redoes both elements in one step",
+    (property, locked, width1, height1, width2, height2) => {
+      const { first, second, unrelated } = selectPair();
+      const unrelatedBefore = JSON.parse(JSON.stringify(unrelated));
+      const before = geometry();
+      const undoCount = API.getUndoStack().length;
+      if (locked) {
+        fireEvent.click(getAspectRatioLock());
+      }
+      UI.updateInput(getDimensionInput(property), "123.12");
+      expect(first.width).toBeCloseTo(width1, 8);
+      expect(first.height).toBeCloseTo(height1, 8);
+      expect(second.width).toBeCloseTo(width2, 8);
+      expect(second.height).toBeCloseTo(height2, 8);
+      expect(getDimensionInput(property).value).toBe("123.12");
+      expect(unrelated).toEqual(unrelatedBefore);
+      expect(API.getUndoStack()).toHaveLength(undoCount + 1);
+      const after = geometry();
+      Keyboard.undo();
+      expect(geometry()).toEqual(before);
+      Keyboard.redo();
+      expect(geometry()).toEqual(after);
+      expect(h.elements.find((element) => element.id === unrelated.id)).toEqual(
+        unrelatedBefore,
+      );
+    },
+  );
+
+  it.each([
+    ["width", false, 1, 50, 1, 120, "1"],
+    ["height", false, 100, 1, 60, 1, "1"],
+    ["width", true, 2, 1, 1, 2, "Mixed"],
+    ["height", true, 2, 1, 1, 2, "Mixed"],
+  ] as const)(
+    "clamps %s with lock=%s and restores the actual input on a repeated no-op",
+    (property, locked, width1, height1, width2, height2, displayed) => {
+      const { first, second } = selectPair();
+      if (locked) {
+        fireEvent.click(getAspectRatioLock());
+      }
+      const input = getDimensionInput(property);
+      UI.updateInput(input, "0");
+      expect(first.width).toBe(width1);
+      expect(first.height).toBe(height1);
+      expect(second.width).toBe(width2);
+      expect(second.height).toBe(height2);
+      expect(input.value).toBe(displayed);
+      const before = JSON.parse(JSON.stringify(h.elements));
+      const undoBefore = [...API.getUndoStack()];
+      UI.updateInput(input, "-1");
+      expect(input.value).toBe(displayed);
+      expect(h.elements).toEqual(before);
+      expect(API.getUndoStack()).toEqual(undoBefore);
+    },
+  );
+
+  it.each(["width", "height"] as const)(
+    "restores a common numeric %s after a locked clamped no-op",
+    (property) => {
+      const { first, second } = selectPair();
+      const dimensions =
+        property === "width"
+          ? { width: 2, height: 1 }
+          : { width: 1, height: 2 };
+      API.updateElement(first, dimensions);
+      API.updateElement(second, dimensions);
+      captureSetup();
+      fireEvent.click(getAspectRatioLock());
+      const undoBefore = [...API.getUndoStack()];
+      UI.updateInput(getDimensionInput(property), "1");
+      expect(getDimensionInput(property).value).toBe("2");
+      expect(first.width).toBe(dimensions.width);
+      expect(second.height).toBe(dimensions.height);
+      expect(API.getUndoStack()).toEqual(undoBefore);
+    },
+  );
+
+  it.each([
+    ["width", false, false, 116, 50.125, 76, 120.5],
+    ["height", false, false, 100.25, 66, 60.25, 137],
+    ["width", true, false, 116, 58, 76, 152],
+    ["height", true, false, 132, 66, 68.5, 137],
+    ["width", false, true, 120, 50.125, 80, 120.5],
+    ["height", false, true, 100.25, 70, 60.25, 140],
+    ["width", true, true, 120, 60, 80, 160],
+    ["height", true, true, 140, 70, 70, 140],
+  ] as const)(
+    "drags %s with lock=%s and Shift=%s from each original snapshot",
+    (property, locked, shiftKey, width1, height1, width2, height2) => {
+      const { first, second, unrelated } = selectPair();
+      API.updateElement(first, { width: 100.25, height: 50.125 });
+      API.updateElement(second, { width: 60.25, height: 120.5 });
+      captureSetup();
+      const before = geometry();
+      const unrelatedBefore = JSON.parse(JSON.stringify(unrelated));
+      const undoCount = API.getUndoStack().length;
+      if (locked) {
+        fireEvent.click(getAspectRatioLock());
+      }
+      dragDimension(property, [7, 16], shiftKey);
+      expect(first.width).toBeCloseTo(width1, 8);
+      expect(first.height).toBeCloseTo(height1, 8);
+      expect(second.width).toBeCloseTo(width2, 8);
+      expect(second.height).toBeCloseTo(height2, 8);
+      expect(unrelated).toEqual(unrelatedBefore);
+      expect(API.getUndoStack()).toHaveLength(undoCount + 1);
+      const after = geometry();
+      Keyboard.undo();
+      expect(geometry()).toEqual(before);
+      Keyboard.redo();
+      expect(geometry()).toEqual(after);
+    },
+  );
+
+  it.each([
+    ["width", false],
+    ["width", true],
+    ["height", false],
+    ["height", true],
+  ] as const)(
+    "rejects all typed %s changes when the second calculation overflows (mixed=%s)",
+    (property, mixed) => {
+      const { first, second } = selectPair();
+      API.updateElement(
+        first,
+        property === "width"
+          ? { width: 50, height: 25 }
+          : { width: 25, height: 50 },
+      );
+      API.updateElement(
+        second,
+        property === "width"
+          ? { width: mixed ? 100 : 50, height: 200 }
+          : { width: 200, height: mixed ? 100 : 50 },
+      );
+      captureSetup();
+      fireEvent.click(getAspectRatioLock());
+      const before = JSON.parse(JSON.stringify(h.elements));
+      const undoBefore = [...API.getUndoStack()];
+      const input = getDimensionInput(property);
+      UI.updateInput(input, "1e308");
+      expect(input.value).toBe(mixed ? "Mixed" : "50");
+      expect(h.elements).toEqual(before);
+      expect(API.getUndoStack()).toEqual(undoBefore);
+    },
+  );
+
+  it("rejects an overflowing drag before changing its first valid element", () => {
+    selectPair();
+    fireEvent.click(getAspectRatioLock());
+    const before = JSON.parse(JSON.stringify(h.elements));
+    const undoBefore = [...API.getUndoStack()];
+    // First width/height pair remains finite; the second height would overflow.
+    dragDimension("width", [1e308]);
+    expect(getDimensionInput("width").value).toBe("Mixed");
+    expect(h.elements).toEqual(before);
+    expect(API.getUndoStack()).toEqual(undoBefore);
+  });
+
+  it("retains the preference for eligible units alongside standalone text", () => {
+    const { first, second, unrelated } = selectPair();
+    fireEvent.click(getAspectRatioLock());
+    const text = API.createElement({
+      type: "text",
+      text: "A long line of text to wrap",
+      width: 300,
+      height: 25,
+      fontSize: 20,
+    });
+    API.setElements([first, second, unrelated, text]);
+    API.setSelectedElements([first, text]);
+    expect(
+      within(UI.queryStats()!).queryByRole("button", {
+        name: t("stats.keepProportions"),
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    UI.updateInput(getDimensionInput("width"), "60");
+    expect(first.height).toBe(30);
+    expect(text.width).toBe(60);
+    expect(text.fontSize).toBe(20);
+    expect(text.text).toContain("\n");
+    API.setSelectedElements([first, second]);
+    expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(getAspectRatioLock());
+    API.setSelectedElements([first]);
+    expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("shares the retained lock with groups and ungrouped units", () => {
+    const { first, second, unrelated } = selectPair();
+    fireEvent.click(getAspectRatioLock());
+    const groupA = API.createElement({
+      type: "rectangle",
+      x: 400,
+      y: 0,
+      width: 100,
+      height: 50,
+      groupIds: ["group"],
+    });
+    const groupB = API.createElement({
+      type: "rectangle",
+      x: 500,
+      y: 0,
+      width: 100,
+      height: 50,
+      groupIds: ["group"],
+    });
+    API.setElements([first, second, unrelated, groupA, groupB]);
+    API.setSelectedElements([first, groupA, groupB]);
+    expect(
+      within(UI.queryStats()!).queryByRole("button", {
+        name: t("stats.keepProportions"),
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    UI.updateInput(getDimensionInput("width"), "400");
+    expect(first.width).toBe(400);
+    expect(first.height).toBe(200);
+    const [x1, y1, x2, y2] = getCommonBounds([groupA, groupB]);
+    expect(x2 - x1).toBe(400);
+    expect(y2 - y1).toBe(100);
+    API.setSelectedElements([first, second]);
+    expect(getAspectRatioLock()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("rewraps bound text and displays final container dimensions after layout", () => {
+    const { first, second, unrelated } = selectPair();
+    const text = API.createElement({
+      type: "text",
+      containerId: first.id,
+      text: "A long line of text that wraps inside a narrow container",
+      width: 90,
+      height: 25,
+      fontSize: 20,
+    });
+    API.setElements([first, second, unrelated, text]);
+    API.updateElement(first, {
+      boundElements: [{ id: text.id, type: "text" }],
+    });
+    captureSetup();
+    const originalText = text.originalText;
+    UI.updateInput(getDimensionInput("width"), "60");
+    expect(text.text).toContain("\n");
+    expect(text.originalText).toBe(originalText);
+    expect(text.fontSize).toBe(20);
+    const heightInput = getDimensionInput("height");
+    UI.updateInput(heightInput, "1");
+    expect(first.height).toBeGreaterThan(1);
+    expect(second.height).toBe(1);
+    expect(heightInput.value).toBe("Mixed");
+    const before = geometry();
+    const wrappedText = text.text;
+    UI.updateInput(heightInput, "1");
+    expect(heightInput.value).toBe("Mixed");
+    expect(geometry()).toEqual(before);
+    expect(text.text).toBe(wrappedText);
+    expect(text.fontSize).toBe(20);
+  });
+
+  it("includes dependent text in the same undo/redo step", () => {
+    const { first, second, unrelated } = selectPair();
+    const text = API.createElement({
+      type: "text",
+      containerId: first.id,
+      text: "A long line that wraps after resizing the container",
+      width: 90,
+      height: 25,
+      fontSize: 20,
+    });
+    API.setElements([first, second, unrelated, text]);
+    API.updateElement(first, {
+      boundElements: [{ id: text.id, type: "text" }],
+    });
+    captureSetup();
+    // Start from a laid-out label, as a real container would, so undo restores
+    // valid geometry rather than normalizing an artificial unwrapped fixture.
+    act(() => handleBindTextResize(first, h.app.scene, "e", false));
+    captureSetup();
+    const snapshot = () => ({
+      geometry: geometry(),
+      text: API.getElement(text).text,
+      originalText: API.getElement(text).originalText,
+      fontSize: API.getElement(text).fontSize,
+    });
+    const before = snapshot();
+    const undoCount = API.getUndoStack().length;
+    UI.updateInput(getDimensionInput("width"), "60");
+    const after = snapshot();
+    expect(after.text).toContain("\n");
+    expect(API.getUndoStack()).toHaveLength(undoCount + 1);
+    Keyboard.undo();
+    expect(snapshot()).toEqual(before);
+    Keyboard.redo();
+    expect(snapshot()).toEqual(after);
   });
 });
 
@@ -668,6 +1308,7 @@ describe("stats for multiple elements", () => {
     };
 
     createAndSelectGroup();
+    fireEvent.click(getAspectRatioLock());
 
     const elementsInGroup = h.elements.filter((el) => isInGroup(el));
     let [x1, y1, x2, y2] = getCommonBounds(elementsInGroup);

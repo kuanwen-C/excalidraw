@@ -7,7 +7,7 @@ import {
   STICKY_NOTE_MIN_FONT_SIZE,
   arrayToMap,
 } from "@excalidraw/common";
-import { queryByTestId } from "@testing-library/react";
+import { queryByTestId, within } from "@testing-library/react";
 import { pointFrom } from "@excalidraw/math";
 
 import {
@@ -38,6 +38,7 @@ import { actionCopyStyles, actionPasteStyles } from "../actions/actionStyles";
 import { activeEyeDropperAtom } from "../components/EyeDropper";
 import { getShapeActionPredicates } from "../components/shapeActionPredicates";
 import { editorJotaiStore } from "../editor-jotai";
+import { t } from "../i18n";
 import { Excalidraw } from "../index";
 import { exportToSvg } from "../scene/export";
 
@@ -1130,6 +1131,11 @@ describe("sticky notes", () => {
       // a group is one atomic unit with a common width (an ungrouped pair
       // shows "Mixed"); group scaling is uniform
       API.executeAction(actionGroup);
+      fireEvent.click(
+        within(UI.queryStats()!).getByRole("button", {
+          name: t("stats.keepProportions"),
+        }),
+      );
       const groupWidth = statsInput("W");
       UI.updateInput(groupWidth, String(Number(groupWidth.value) * 2));
       updated = getElement<ExcalidrawStickyNoteElement>(note.id);

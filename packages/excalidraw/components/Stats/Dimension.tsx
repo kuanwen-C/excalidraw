@@ -5,21 +5,22 @@ import {
   MINIMAL_CROP_SIZE,
   getNonDeletedElements,
   getUncroppedWidthAndHeight,
+  isNonDeletedElement,
 } from "@excalidraw/element";
 import { resizeSingleElement } from "@excalidraw/element";
-import { isImageElement } from "@excalidraw/element";
+import { isImageElement, isTextElement } from "@excalidraw/element";
 import { isFrameLikeElement } from "@excalidraw/element";
 import { getElementsInResizingFrame } from "@excalidraw/element";
 import { replaceAllElementsInFrame } from "@excalidraw/element";
 
-import type {
-  ExcalidrawElement,
-  NonDeletedExcalidrawElement,
-} from "@excalidraw/element/types";
+import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
 
 import type { Scene } from "@excalidraw/element";
 
+import { t } from "../../i18n";
+
 import DragInput from "./DragInput";
+import { calculateDimensions } from "./dimensionUtils";
 import { getStepSizedValue, isPropertyEditable } from "./utils";
 
 import type {
@@ -33,12 +34,10 @@ interface DimensionDragInputProps {
   element: NonDeletedExcalidrawElement;
   scene: Scene;
   appState: AppState;
+  shouldKeepAspectRatio: boolean;
 }
 
 const STEP_SIZE = 10;
-const _shouldKeepAspectRatio = (element: ExcalidrawElement) => {
-  return element.type === "image";
-};
 
 const handleDimensionChange: DragInputCallbackType<
   DimensionDragInputProps["property"]
@@ -53,16 +52,16 @@ const handleDimensionChange: DragInputCallbackType<
   originalAppState,
   instantChange,
   scene,
-  app,
   setAppState,
+  setInputValue,
 }) => {
   const elementsMap = scene.getNonDeletedElementsMap();
-  const origElement = originalElements[0];
-  const latestElement = elementsMap.get(origElement.id);
-  if (origElement && latestElement) {
+  const elementId = originalElements[0]?.id;
+  const origElement = elementId && originalElementsMap.get(elementId);
+  const latestElement = elementId && elementsMap.get(elementId);
+  if (origElement && isNonDeletedElement(origElement) && latestElement) {
     const keepAspectRatio =
-      shouldKeepAspectRatio || _shouldKeepAspectRatio(origElement);
-    const aspectRatio = origElement.width / origElement.height;
+      shouldKeepAspectRatio && !isTextElement(origElement);
 
     if (originalAppState.croppingElementId === origElement.id) {
       const element = elementsMap.get(origElement.id);
@@ -165,25 +164,35 @@ const handleDimensionChange: DragInputCallbackType<
       return;
     }
 
+    let requestedValue = nextValue;
+    if (requestedValue === undefined) {
+      const draggedValue = Math.max(
+        0,
+        origElement[property] + accumulatedChange,
+      );
+      requestedValue = shouldChangeByStepSize
+        ? getStepSizedValue(draggedValue, STEP_SIZE)
+        : Math.round(draggedValue);
+    }
+
+    const dimensions = calculateDimensions({
+      originalWidth: origElement.width,
+      originalHeight: origElement.height,
+      property,
+      requestedValue,
+      keepAspectRatio,
+      minimumSize: MIN_WIDTH_OR_HEIGHT,
+    });
+    if (!dimensions) {
+      setInputValue(round(latestElement[property], 2));
+      setAppState({ toast: { message: t("stats.resizeInvalidGeometry") } });
+      return;
+    }
+
+    const { width: nextWidth, height: nextHeight } = dimensions;
+
     // User types in a value to stats then presses Enter
     if (nextValue !== undefined) {
-      const nextWidth = Math.max(
-        property === "width"
-          ? nextValue
-          : keepAspectRatio
-          ? nextValue * aspectRatio
-          : origElement.width,
-        MIN_WIDTH_OR_HEIGHT,
-      );
-      const nextHeight = Math.max(
-        property === "height"
-          ? nextValue
-          : keepAspectRatio
-          ? nextValue / aspectRatio
-          : origElement.height,
-        MIN_WIDTH_OR_HEIGHT,
-      );
-
       resizeSingleElement(
         nextWidth,
         nextHeight,
@@ -215,71 +224,44 @@ const handleDimensionChange: DragInputCallbackType<
         scene.replaceAllElements(updatedElements);
       }
 
+      // Layout may adjust the requested size, or clamping may leave it unchanged.
+      const finalElement = scene
+        .getNonDeletedElementsMap()
+        .get(latestElement.id);
+      if (finalElement) {
+        setInputValue(round(finalElement[property], 2));
+      }
       return;
     }
 
     // Stats slider is dragged
-    {
-      const changeInWidth = property === "width" ? accumulatedChange : 0;
-      const changeInHeight = property === "height" ? accumulatedChange : 0;
+    resizeSingleElement(
+      nextWidth,
+      nextHeight,
+      latestElement,
+      origElement,
+      originalElementsMap,
+      scene,
+      property === "width" ? "e" : "s",
+      {
+        shouldMaintainAspectRatio: keepAspectRatio,
+      },
+    );
 
-      let nextWidth = Math.max(0, origElement.width + changeInWidth);
-      if (property === "width") {
-        if (shouldChangeByStepSize) {
-          nextWidth = getStepSizedValue(nextWidth, STEP_SIZE);
-        } else {
-          nextWidth = Math.round(nextWidth);
-        }
-      }
-
-      let nextHeight = Math.max(0, origElement.height + changeInHeight);
-      if (property === "height") {
-        if (shouldChangeByStepSize) {
-          nextHeight = getStepSizedValue(nextHeight, STEP_SIZE);
-        } else {
-          nextHeight = Math.round(nextHeight);
-        }
-      }
-
-      if (keepAspectRatio) {
-        if (property === "width") {
-          nextHeight = Math.round((nextWidth / aspectRatio) * 100) / 100;
-        } else {
-          nextWidth = Math.round(nextHeight * aspectRatio * 100) / 100;
-        }
-      }
-
-      nextHeight = Math.max(MIN_WIDTH_OR_HEIGHT, nextHeight);
-      nextWidth = Math.max(MIN_WIDTH_OR_HEIGHT, nextWidth);
-
-      resizeSingleElement(
-        nextWidth,
-        nextHeight,
-        latestElement,
-        origElement,
-        originalElementsMap,
-        scene,
-        property === "width" ? "e" : "s",
-        {
-          shouldMaintainAspectRatio: keepAspectRatio,
-        },
+    // Handle highlighting frame element candidates
+    if (isFrameLikeElement(latestElement)) {
+      const nextElementsInFrame = getNonDeletedElements(
+        getElementsInResizingFrame(
+          scene.getElementsIncludingDeleted(),
+          latestElement,
+          originalAppState,
+          scene.getNonDeletedElementsMap(),
+        ),
       );
 
-      // Handle highlighting frame element candidates
-      if (isFrameLikeElement(latestElement)) {
-        const nextElementsInFrame = getNonDeletedElements(
-          getElementsInResizingFrame(
-            scene.getElementsIncludingDeleted(),
-            latestElement,
-            originalAppState,
-            scene.getNonDeletedElementsMap(),
-          ),
-        );
-
-        setAppState({
-          elementsToHighlight: nextElementsInFrame,
-        });
-      }
+      setAppState({
+        elementsToHighlight: nextElementsInFrame,
+      });
     }
   }
 };
@@ -322,6 +304,7 @@ const DimensionDragInput = ({
   element,
   scene,
   appState,
+  shouldKeepAspectRatio,
 }: DimensionDragInputProps) => {
   let value = round(property === "width" ? element.width : element.height, 2);
 
@@ -352,6 +335,7 @@ const DimensionDragInput = ({
       editable={isPropertyEditable(element, property)}
       scene={scene}
       appState={appState}
+      shouldKeepAspectRatio={shouldKeepAspectRatio}
       property={property}
       dragFinishedCallback={handleDragFinished}
     />

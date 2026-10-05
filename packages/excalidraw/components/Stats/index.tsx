@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, memo } from "react";
 import { STATS_PANELS } from "@excalidraw/common";
 import { getCommonBounds } from "@excalidraw/element";
 import { getUncroppedWidthAndHeight } from "@excalidraw/element";
-import { isImageElement } from "@excalidraw/element";
+import { isImageElement, isTextElement } from "@excalidraw/element";
 
 import { frameAndChildrenSelectedTogether } from "@excalidraw/element";
 
@@ -18,7 +18,8 @@ import { t } from "../../i18n";
 import { isGridModeEnabled } from "../../snapping";
 import { useExcalidrawAppState, useExcalidrawSetAppState } from "../App";
 import { Island } from "../Island";
-import { CloseIcon } from "../icons";
+import { IconButton } from "../IconButton";
+import { CloseIcon, LockedIcon, UnlockedIcon } from "../icons";
 
 import Angle from "./Angle";
 import CanvasGrid from "./CanvasGrid";
@@ -131,6 +132,7 @@ export const StatsInner = memo(
     const elements = scene.getNonDeletedElements();
     const elementsMap = scene.getNonDeletedElementsMap();
     const setAppState = useExcalidrawSetAppState();
+    const [keepAspectRatio, setKeepAspectRatio] = useState(false);
 
     const singleElement =
       selectedElements.length === 1 ? selectedElements[0] : null;
@@ -140,6 +142,19 @@ export const StatsInner = memo(
 
     const cropMode =
       appState.croppingElementId && isImageElement(singleElement);
+
+    const canLockAspectRatio =
+      selectedElements.length > 0 &&
+      !cropMode &&
+      selectedElements.some(
+        (element) =>
+          !isTextElement(element) ||
+          (selectedElements.length > 1 &&
+            (selectedElements.some(
+              (container) => container.id === element.containerId,
+            ) ||
+              element.groupIds.some((id) => appState.selectedGroupIds[id]))),
+      );
 
     const unCroppedDimension = cropMode
       ? getUncroppedWidthAndHeight(singleElement)
@@ -181,6 +196,22 @@ export const StatsInner = memo(
     const _frameAndChildrenSelectedTogether = useMemo(() => {
       return frameAndChildrenSelectedTogether(selectedElements);
     }, [selectedElements]);
+
+    const aspectRatioLock = canLockAspectRatio && (
+      <StatsRow columns={2}>
+        <span>{t("stats.keepProportions")}</span>
+        <IconButton
+          type="toggle"
+          size="small"
+          style={{ justifySelf: "end" }}
+          icon={keepAspectRatio ? LockedIcon : UnlockedIcon}
+          aria-label={t("stats.keepProportions")}
+          title={t("stats.keepProportions")}
+          checked={keepAspectRatio}
+          onSelect={() => setKeepAspectRatio((locked) => !locked)}
+        />
+      </StatsRow>
+    );
 
     return (
       <div className="exc-stats">
@@ -323,6 +354,9 @@ export const StatsInner = memo(
                           element={singleElement}
                           scene={scene}
                           appState={appState}
+                          shouldKeepAspectRatio={
+                            canLockAspectRatio && keepAspectRatio
+                          }
                         />
                       </StatsRow>
                       <StatsRow>
@@ -331,8 +365,12 @@ export const StatsInner = memo(
                           element={singleElement}
                           scene={scene}
                           appState={appState}
+                          shouldKeepAspectRatio={
+                            canLockAspectRatio && keepAspectRatio
+                          }
                         />
                       </StatsRow>
+                      {aspectRatioLock}
                       <StatsRow>
                         <Angle
                           property="angle"
@@ -391,6 +429,9 @@ export const StatsInner = memo(
                           atomicUnits={atomicUnits}
                           scene={scene}
                           appState={appState}
+                          shouldKeepAspectRatio={
+                            canLockAspectRatio && keepAspectRatio
+                          }
                         />
                       </StatsRow>
                       <StatsRow>
@@ -401,8 +442,12 @@ export const StatsInner = memo(
                           atomicUnits={atomicUnits}
                           scene={scene}
                           appState={appState}
+                          shouldKeepAspectRatio={
+                            canLockAspectRatio && keepAspectRatio
+                          }
                         />
                       </StatsRow>
+                      {aspectRatioLock}
                       <StatsRow>
                         <MultiAngle
                           property="angle"
